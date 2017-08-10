@@ -66,19 +66,63 @@ Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
   return result;
 }
 
+// Simple timer for measuring time
+class Timer {
+private:
+  std::chrono::time_point<std::chrono::high_resolution_clock>  timestamp_start;
+  double min = 0;
+  double max = 0;
+  double moving_avg = 0;
+  unsigned int n_samples = 5;
+  bool is_initialized = false;
+public:
+
+  Timer() {}
+  ~Timer() {}
+
+  void Start() {
+    timestamp_start = std::chrono::high_resolution_clock::now();
+  }
+
+  void Stop() {
+    std::chrono::duration<double> latency_tot = std::chrono::high_resolution_clock::now() - timestamp_start;
+    double latency = latency_tot.count();
+    if (is_initialized) {
+      // Update min&max
+      if (latency < min) {min = latency; }
+      else if (latency > max) {max = latency; }
+      // Update running average
+      moving_avg -= moving_avg / n_samples;
+      moving_avg += latency / n_samples;
+    }
+    else {
+      min = latency;
+      max=latency;
+      moving_avg=latency;
+      is_initialized = true;
+    }
+  }
+
+  double getAverage() {return moving_avg;}
+  double getMin() {return min;}
+  double getMax() {return max;}
+};
+
 int main() {
   uWS::Hub h;
+  Timer timer;
 
   // MPC is initialized here!
   MPC mpc;
 
-  h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&mpc, &timer](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
+    timer.Start();
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
     string sdata = string(data).substr(0, length);
-    cout << sdata << endl;
+    //cout << sdata << endl;
     if (sdata.size() > 2 && sdata[0] == '4' && sdata[1] == '2') {
       string s = hasData(sdata);
       if (s != "") {
@@ -90,13 +134,12 @@ int main() {
           vector<double> ptsx = j[1]["ptsx"];
           vector<double> ptsy = j[1]["ptsy"];
           // Get car's current state
-          double px = j[1]["x"];
-          double py = j[1]["y"];
-          double psi = j[1]["psi"];
-          double v = j[1]["speed"];
-          v *= 0.44704; // convert to meters/second
-          double steer_value = -(double)j[1]["steering_angle"];  // Invert steering angle (delta)
-          double throttle_value = j[1]["throttle"];
+          const double px_0 = j[1]["x"];
+          const double py_0 = j[1]["y"];
+          const double psi_0 = j[1]["psi"];
+          const double v_0 = 0.44704 *(double)j[1]["speed"]; // convert mph to meters/second
+          const double delta_0 = -(double)j[1]["steering_angle"];  // Invert steering angle (delta)
+          const double a_0 = j[1]["throttle"];
 
 
           // Convert world coordinates to car-local coordinate system
@@ -106,52 +149,60 @@ int main() {
           Eigen::VectorXd ptsx_transform(ptsx.size());
           Eigen::VectorXd ptsy_transform(ptsy.size());
           for (uint i=0; i < ptsx.size(); i++) {
-              const double shift_x = ptsx[i] - px;
-              const double shift_y = ptsy[i] - py;
-              ptsx_transform(i) = (shift_x*cos(-psi) - shift_y*sin(-psi));
-              ptsy_transform(i) = (shift_x*sin(-psi) + shift_y*cos(-psi));
+              const double shift_x = ptsx[i] - px_0;
+              const double shift_y = ptsy[i] - py_0;
+              ptsx_transform(i) = (shift_x*cos(-psi_0) - shift_y*sin(-psi_0));
+              ptsy_transform(i) = (shift_x*sin(-psi_0) + shift_y*cos(-psi_0));
           }
 
           //  Get 3rd order polynomial coefficients of given waypoints
           auto coeffs = polyfit(ptsx_transform, ptsy_transform, 3);
 
-          // Calculate cte and epsi
-          double cte = polyeval(coeffs, 0);
-          // Complete epsi equation for reference
-          // double epsi = psi - atan(coeffs[1] + 2 * px * coeffs[3] + 3 * coeffs[3] * pow(px, 2))
-          // And it gets simplified to below equation becauce px=0 and psi=0
-          double epsi = -atan(coeffs[1]);
-
+          double cte_0 = polyeval(coeffs, 0);
+          double epsi_0 = -atan(coeffs[1]);
 
           // Here x,y and psi are zero because state is in car's coordinate
           // system
           Eigen::VectorXd state(6);
-          const double latency = 0.01;
+          const double latency = timer.getAverage();
           if (latency > 0.005) {
             // Taking latency into account
             //px = 0 + v * sin(steer_value) * latency;
             //py = 0 + v * cos(steer_value) * latency;
-            px = v * latency;
-            py = 0;
-            psi = -v * steer_value*latency/MPC::Lf;
-            epsi = -atan(coeffs[1]) + psi;
-            cte= polyeval(coeffs,0) + v*sin(epsi)*latency;
-            v += throttle_value * latency;
-            state << px, py, psi, v, cte, epsi;
+            //px = v * latency;
+            //py = 0;
+            //TODO: Separete t and t+1 variables
+            const double px_1 = v_0 * cos(delta_0) * latency;
+            const double py_1 = v_0 * sin(delta_0) * latency;
+            const double  psi_1 = (v_0/MPC::Lf) * delta_0 * latency;
+            //epsi = -atan(coeffs[1]) + (v/MPC::Lf) * steer_value * latency;
+            const double  epsi_1 = -atan(coeffs[1]) + (v_0/MPC::Lf) * delta_0 * latency;
+            const double  cte_1 = polyeval(coeffs,0) + v_0 * sin(epsi_0) * latency;
+            const double v_1 = v_0 + a_0 * latency;
+            state << px_1, py_1, psi_1, v_1, cte_1, epsi_1;
           }
           else {
-            state << 0, 0, 0, v, cte, epsi;
+            // Calculate cte and epsi without effect of latency
+            cte_0 = polyeval(coeffs, 0);
+            // Complete epsi equation for reference
+            // double epsi = psi - atan(coeffs[1] + 2 * px * coeffs[3] + 3 * coeffs[3] * pow(px, 2))
+            // And it gets simplified to below equation becauce px=0 and psi=0
+            epsi_0 = -atan(coeffs[1]);
+            state << 0, 0, 0, v_0, cte_0, epsi_0;
           }
 
           // Solve steering angle, throttle and predicted trajectory
+
           auto vars = mpc.Solve(state, coeffs);
+
+
 
           // Display the waypoints/reference line
           vector<double> next_x_vals;
           vector<double> next_y_vals;
 
           double poly_inc = 2.5;
-          int num_points = 25;
+          int num_points = 20;
           for (int i = 1; i < num_points; i++) {
               next_x_vals.push_back(poly_inc*i);
               next_y_vals.push_back(polyeval(coeffs, poly_inc*i));
@@ -204,7 +255,9 @@ int main() {
           //
           // NOTE: REMEMBER TO SET THIS TO 100 MILLISECONDS BEFORE
           // SUBMITTING.
-          //this_thread::sleep_for(chrono::milliseconds(100));
+          this_thread::sleep_for(chrono::milliseconds(100));
+          timer.Stop();
+          //std::cout << "Total latency = " << timer.getAverage() << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
         }
       } else {

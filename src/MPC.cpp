@@ -16,7 +16,7 @@ double dt = 0.15;
 // The reference velocity is set to 40 mph.
 double ref_cte = 0;
 double ref_epsi = 0;
-double ref_v = 20;
+double ref_v = 30;
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -62,8 +62,8 @@ class FG_eval {
       // Multiplying by N means that we are weighing more future states than the current
       //fg[0] += 1000*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
       //fg[0] += 1500*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
-      fg[0] += 1000*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
-      fg[0] += 1000*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
+      fg[0] += 1200*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      fg[0] += 1500*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
       fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
     }
 
@@ -80,15 +80,6 @@ class FG_eval {
       fg[0] += 200*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);  // Try 200
       fg[0] += 10*CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);  // try 10
     }
-
-    // Minimize time needed to travel from start to end of path
-    // TODO: Describe more in details
-    //for (uint t = 0; t < N - 1; t++) {
-    //  fg[0] += 2000*CppAD::pow((vars[x_start + t + 1] - vars[x_start + t]) / (1+vars[v_start + t]), 2);
-    //  fg[0] += 2000*CppAD::pow((vars[y_start + t + 1] - vars[y_start + t]) / (1+vars[v_start + t]), 2);
-    //}
-    //fg[0] += 100*CppAD::pow((vars[x_start + N-1] - vars[x_start]) / (0.1+vars[v_start]), 2);
-    //fg[0] += 100*CppAD::pow((vars[y_start + N-1] - vars[y_start]) / (0.1+vars[v_start]), 2);
 
     //
     // Setup Constraints
@@ -146,7 +137,7 @@ class FG_eval {
       // epsi[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
       fg[2 + x_start   + t] = x1   - (x0 + v0 * CppAD::cos(psi0) * dt);
       fg[2 + y_start   + t] = y1   - (y0 + v0 * CppAD::sin(psi0) * dt);
-      fg[2 + psi_start + t] = psi1 - (psi0 + v0 * delta0 / MPC::Lf * dt);
+      fg[2 + psi_start + t] = psi1 - (psi0 + (v0 / MPC::Lf)* delta0 * dt);
       fg[2 + v_start   + t] = v1   - (v0 + a0 * dt);
       fg[2 + cte_start + t] =
           cte1 - ((f0 - y0) + (v0 * CppAD::sin(epsi0) * dt));
