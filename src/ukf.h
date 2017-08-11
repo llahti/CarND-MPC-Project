@@ -21,16 +21,17 @@ private:
   // tool object used to compute Jacobian and RMSE
   Tools tools;
 
+  // Previous simulation data pack is needed for acceleration calculations
+  MeasurementPackage previous_simdata;
+
+  struct VehicleModel {
+    const double Lf = 2.67;
+  } vehicle;
+
 public:
 
   ///* initially set to false, set to true in first call of ProcessMeasurement
   bool is_initialized_;
-
-  ///* if this is false, laser measurements will be ignored (except for init)
-  bool use_laser_;
-
-  ///* if this is false, radar measurements will be ignored (except for init)
-  bool use_radar_;
 
   ///* Use simulator data
   bool use_simdata_;
@@ -55,7 +56,7 @@ public:
   MatrixXd P_aug_;
 
   ///* Measurement covariance matrix for radar measurements
-  MatrixXd S_rad_;
+  //MatrixXd S_rad_;
 
   ///* sigma points matrix
   MatrixXd Xsig_;
@@ -97,23 +98,24 @@ public:
   double lambda_aug_;
 
   ///* Length of radar measurement vector
-  int n_z_rad_;
+  //int n_z_rad_;
 
   ///* Length of lidar measurement vector
-  int n_z_lidar_;
+  //int n_z_lidar_;
 
   ///* Length of measurements from simulator
   int n_z_simulator_;
 
   ///* H matrix for Lidar update step
-  MatrixXd H_lidar_;
+  //MatrixXd H_lidar_;
   MatrixXd H_simulator_;
-  MatrixXd R_lidar_;  // Measurement Covariance matrix for lidar
+  //MatrixXd R_lidar_;  // Measurement Covariance matrix for lidar
   MatrixXd R_simulator_;  // Measurement Covariance for simulator
 
   ///* NIS
-  double NIS_laser_;
-  double NIS_radar_;
+  //double NIS_laser_;
+  //double NIS_radar_;
+  double NIS_simulator_;
 
   /**
    * Constructor
@@ -145,7 +147,7 @@ public:
 
 
   /**
-   * Updates the state and the state covariance matrix using a laser measurement
+   * Updates the state and the state covariance matrix using a simulator measurement
    * @param meas_package The measurement at k+1
    */
   void UpdateSimulator(MeasurementPackage meas_package);
@@ -155,7 +157,7 @@ public:
    * Updates the state and the state covariance matrix using a radar measurement
    * @param meas_package The measurement at k+1
    */
-  void UpdateRadar(MeasurementPackage meas_package);
+  //void UpdateRadar(MeasurementPackage meas_package);
 
 
   /**
@@ -173,11 +175,11 @@ public:
 
   void PredictMeanAndCovariance();
 
-  void PredictLidarMeasurement(VectorXd* z_pred_out);
+  //void PredictLidarMeasurement(VectorXd* z_pred_out);
 
   void PredictSimulatorMeasurement(VectorXd *z_pred_out);
 
-  void UpdateLidarState(MatrixXd* Zsig, VectorXd* z_pred, VectorXd* z);
+  //void UpdateLidarState(MatrixXd* Zsig, VectorXd* z_pred, VectorXd* z);
 
 };
 

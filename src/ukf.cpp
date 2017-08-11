@@ -39,7 +39,7 @@ UKF::UKF() {
   //x_previous = VectorXd(n_x_);
   //x_previous.fill(0.0);
 
-  // initial covariance matrix
+  // initial covariance matrix, fill diagonal with 0.5
   VectorXd p_diag = VectorXd(n_x_);
   p_diag.fill(0.5);
   P_ = MatrixXd(n_x_, n_x_);
@@ -55,7 +55,7 @@ UKF::UKF() {
   P_aug_.fill(0.0);
 
   // Initialize radar measurement covariance matrix
-  S_rad_ = MatrixXd(n_z_rad_, n_z_rad_);
+  //S_rad_ = MatrixXd(n_z_rad_, n_z_rad_);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
   std_a_ = 1;
@@ -70,13 +70,14 @@ UKF::UKF() {
   //            0, 1, 0, 0, 0, 0, 0;
 
   // Define what measurements are used in update
-  H_simulator_ = MatrixXd(6, 7);
+  H_simulator_ = MatrixXd(n_x_, n_x_);
   H_simulator_ << 1, 0, 0, 0, 0, 0, 0,
                   0, 1, 0, 0, 0, 0, 0,
                   0, 0, 1, 0, 0, 0, 0,
                   0, 0, 0, 1, 0, 0, 0,
                   0, 0, 0, 0, 1, 0, 0,
-                  0, 0, 0, 0, 0, 1, 0;
+                  0, 0, 0, 0, 0, 1, 0,
+                  0, 0, 0, 0, 0, 0, 1;
 
   // Initialize lidar measurement covariance matrix
   //R_lidar_ = MatrixXd(2, 2);
@@ -90,7 +91,8 @@ UKF::UKF() {
        pow(simulator_consts.std_speed_, 2),
        pow(simulator_consts.std_yaw_, 2),
        pow(simulator_consts.std_steerangle_, 2),
-       pow(simulator_consts.std_accel_, 2);
+       pow(simulator_consts.std_accel_, 2),
+       pow(simulator_consts.std_yawdd_, 2);
   R_simulator_ = MatrixXd(n_x_, n_x_);
   R_simulator_ = r.asDiagonal();
 
@@ -113,10 +115,11 @@ UKF::UKF() {
   weights_(0) = lambda_aug_/(lambda_aug_+n_aug_);
 
   // Initialize NIS
-  NIS_laser_ = 0.0;
+  //NIS_laser_ = 0.0;
+  NIS_simulator_ = 0.0;
 
   // Number of measurements from simulator
-  n_z_simulator_ = 6;
+  n_z_simulator_ = 7;
 }
 
 UKF::~UKF() {}
@@ -174,13 +177,13 @@ void UKF::FirstUpdate(MeasurementPackage measurement_pack) {
           measurement_pack.raw_measurements_[2],  // abs. velocity
           measurement_pack.raw_measurements_[3],  // yaw-angle
           measurement_pack.raw_measurements_[4],  // steering angle
-          measurement_pack.raw_measurements_[5],  // acceleration
+          0.0,                                    // acceleration, not properly returned from simulator
           0.0;                                    // yaw_rate
    }
   previous_timestamp_ = measurement_pack.timestamp_;
+  previous_simdata = measurement_pack;
 
   // Initialization done, save first measurement as a current state.
-  //x_ = x_tmp;
   is_initialized_ = true;
   return;
 }
@@ -241,7 +244,11 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
    * Predict
    ***********/
   //compute the time in seconds elapsed between the current and previous measurements
-  float dt = (meas_package.timestamp_ - previous_timestamp_).count();  // dt - expressed in seconds
+  std::chrono::duration<double> time_diff = meas_package.timestamp_ - previous_timestamp_;
+  double dt = time_diff.count();  // dt - expressed in seconds
+  if (dt < 0.0001) {
+    std::cout << "UKF: Measurement time difference unreasonable small!\n";
+  }
   // Predict k+1 state
   Prediction(dt);
 
@@ -252,7 +259,20 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     // Simulator Data Update
     // update timestamp only when measurement is processed
     previous_timestamp_ = meas_package.timestamp_;
+    // Estimate acceleration and yaw_rate from measurements
+    std::chrono::duration<double> time_diff = meas_package.timestamp_ - previous_simdata.timestamp_;
+    double delta_t = time_diff.count();
+    double delta_v = meas_package.raw_measurements_(2) - previous_simdata.raw_measurements_(2);
+    double a = 0;
+    if (delta_t < 0.00001) {a = 0;}
+    else { a = delta_v / delta_t; }  // Calculate acceleration from speed change
+    double yawd = (meas_package.raw_measurements_(2)/vehicle.Lf) * meas_package.raw_measurements_(4);
+    meas_package.raw_measurements_(5) = a;
+    meas_package.raw_measurements_(6) = yawd;
+    // Update state with simulation data
     UpdateSimulator(meas_package);
+    // Save measpackage for next round
+    previous_simdata = meas_package;
   }
   return;
 }
@@ -340,6 +360,7 @@ void UKF::PredictMeanAndCovariance() {
  * @brief UKF::PredictLidarMeasurement
  * @param z_pred_out
  */
+/*
 void UKF::PredictLidarMeasurement(VectorXd *z_pred_out) {
   //create matrix for sigma points in measurement space and get px and py
   MatrixXd Zsig = MatrixXd(n_z_lidar_, n_sp_xaug_);
@@ -352,6 +373,7 @@ void UKF::PredictLidarMeasurement(VectorXd *z_pred_out) {
   //write result
   *z_pred_out = z_pred;
 }
+*/
 
 /**
  * @brief UKF::PredictSimulatorMeasurement
@@ -377,7 +399,7 @@ void UKF::PredictSimulatorMeasurement(VectorXd *z_pred_out) {
 void UKF::UpdateSimulator(MeasurementPackage meas_package) {
   // Predict simulator data by using sigma-points
   VectorXd z_pred;
-  PredictLidarMeasurement(&z_pred);
+  PredictSimulatorMeasurement(&z_pred);
   //VectorXd y = z - z_pred;
   VectorXd y = meas_package.raw_measurements_ - z_pred;
   MatrixXd Ht = H_simulator_.transpose();
@@ -393,5 +415,5 @@ void UKF::UpdateSimulator(MeasurementPackage meas_package) {
   P_ = (I_ - K * H_simulator_) * P_;
 
   // Calculate NIS
-  NIS_laser_ = y.transpose() * Si * y;
+  NIS_simulator_ = y.transpose() * Si * y;
 }

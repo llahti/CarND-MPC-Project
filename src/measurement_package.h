@@ -57,8 +57,11 @@ const struct SimulatorMeasurement {
   ///* acceleration standard deviation
   double std_accel_ = 0.01;
 
-  ///* steering andle standard deviation
+  ///* steering angle standard deviation
   double std_steerangle_ = 0.01;
+
+  ///* yaw-rate standard deviation
+  double std_yawdd_ = 0.01;
 } simulator_consts;
 
 #endif /* MEASUREMENT_PACKAGE_H_ */

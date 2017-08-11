@@ -10,6 +10,7 @@
 #include "MPC.h"
 #include "json.hpp"
 #include "measurement_package.h"
+#include "ukf.h"
 
 // for convenience
 using json = nlohmann::json;
@@ -123,9 +124,10 @@ public:
  * [4] Steering angle in radians (converted into car local coordination)
  * [5] throttle value
  */
-MeasurementPackage getStateFromJSON(nlohmann::json* obj, MeasurementPackage previous_meas) {
-  MeasurementPackage meas_pack = MeasurementPackage();
-  meas_pack.timestamp_ = std::chrono::high_resolution_clock::now();
+MeasurementPackage getStateFromJSON(nlohmann::json* obj) {
+  std::chrono::time_point<std::chrono::high_resolution_clock> timestamp;
+  timestamp = std::chrono::high_resolution_clock::now();
+  // Extract data from JSON package
   Eigen::VectorXd measurements(7);
   measurements.fill(0.0);
   measurements(0) = (*obj)[1]["x"];
@@ -133,23 +135,13 @@ MeasurementPackage getStateFromJSON(nlohmann::json* obj, MeasurementPackage prev
   measurements(2) = 0.44704 *(double)(*obj)[1]["speed"]; // convert mph to meters/second
   measurements(3) = (*obj)[1]["psi"];
   measurements(4) = -(double)(*obj)[1]["steering_angle"];  // Invert steering angle (delta)
-  //measurements(5) = (*obj)[1]["throttle"];
-  // Calculate accelaration from previous measurement
-
-
-  // Calculate acceleration and yaw-rate
-  // Check that previous_meas is initialized by checking the measurement type
-  if (previous_meas.sensor_type_ == MeasurementPackage::SensorType::MPC_PRJ_SIM) {
-    std::chrono::duration<double> time_diff = meas_pack.timestamp_ - previous_meas.timestamp_;
-    double delta_t = time_diff.count();
-    double delta_v = measurements(2) - previous_meas.raw_measurements_(2);
-    double a = delta_v / delta_t;
-    double yawd = (measurements(2)/MPC::Lf) * measurements(4);
-    measurements(5) = a;
-    measurements(6) = yawd;
-  }
+  measurements(5) = (*obj)[1]["throttle"];
+  measurements(6) = (measurements(2)/MPC::Lf) * measurements(4);
+  // Finalize measurement pack and return it
+  MeasurementPackage meas_pack = MeasurementPackage();
   meas_pack.raw_measurements_ = measurements;
   meas_pack.sensor_type_ = MeasurementPackage::SensorType::MPC_PRJ_SIM;
+  meas_pack.timestamp_ = timestamp;
   return meas_pack;
 }
 
@@ -159,12 +151,9 @@ int main() {
 
   // MPC is initialized here!
   MPC mpc;
+  UKF ukf = UKF();
 
- MeasurementPackage previous_meas;
- previous_meas.raw_measurements_.fill(0.0);
- previous_meas.sensor_type_ = MeasurementPackage::UNKNOWN;
-
-  h.onMessage([&mpc, &timer, &previous_meas](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&mpc, &timer, &ukf](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     timer.Start();
     // "42" at the start of the message means there's a websocket message event.
@@ -178,9 +167,10 @@ int main() {
         auto j = json::parse(s);
         string event = j[0].get<string>();
         if (event == "telemetry") {
-          MeasurementPackage meas = getStateFromJSON(&j, previous_meas);
-          previous_meas = meas;
-          std::cout << meas.raw_measurements_ << std::endl;
+          MeasurementPackage meas = getStateFromJSON(&j);
+          std::cout << "RAW meas: " << meas.raw_measurements_ << std::endl;
+          ukf.ProcessMeasurement(meas);
+          std::cout << "UKF est.: " << ukf.x_ << std::endl;
           // j[1] is the data JSON object
           // Get car's current state
           const double px_0 = j[1]["x"];
