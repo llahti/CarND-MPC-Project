@@ -8,15 +8,15 @@ using CppAD::AD;
 // Set the timestep length and duration.
 // Timestep length is 50ms and number of timesteps is 30
 // This makes our prediction horizon 1.5s long
-size_t N = 14;
-double dt = 0.15;
+size_t N = 15;
+double dt = 0.12;
 
 
 // Both the reference cross track and orientation errors are 0.
 // The reference velocity is set to 40 mph.
 double ref_cte = 0;
 double ref_epsi = 0;
-double ref_v = 30;
+double ref_v = 20;
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -62,23 +62,23 @@ class FG_eval {
       // Multiplying by N means that we are weighing more future states than the current
       //fg[0] += 1000*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
       //fg[0] += 1500*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
-      fg[0] += 1200*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
-      fg[0] += 1500*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
+      fg[0] += 200*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      fg[0] += CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
       fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
     }
 
     // Minimize the use of actuators.
     // TODO: Describe more in details
     for (uint t = 0; t < N - 1; t++) {
-      fg[0] += 5*CppAD::pow(vars[delta_start + t], 2);  // try 5 as a multiplier
-      fg[0] += 5*CppAD::pow(vars[a_start + t], 2);  // try 5 as a multiplier
+      fg[0] += CppAD::pow(vars[delta_start + t], 2);  // try 5 as a multiplier
+      fg[0] += CppAD::pow(vars[a_start + t], 2);  // try 5 as a multiplier
     }
 
     // Minimize the value gap between sequential actuations.
     // TODO: Describe more in details
     for (uint t = 0; t < N - 2; t++) {
-      fg[0] += 200*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);  // Try 200
-      fg[0] += 10*CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);  // try 10
+      fg[0] += CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);  // Try 200
+      fg[0] += CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);  // try 10
     }
 
     //

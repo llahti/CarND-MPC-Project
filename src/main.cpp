@@ -9,6 +9,7 @@
 #include "Eigen-3.3/Eigen/QR"
 #include "MPC.h"
 #include "json.hpp"
+#include "measurement_package.h"
 
 // for convenience
 using json = nlohmann::json;
@@ -73,7 +74,7 @@ private:
   double min = 0;
   double max = 0;
   double moving_avg = 0;
-  unsigned int n_samples = 5;
+  unsigned int n_samples = 3;
   bool is_initialized = false;
 public:
 
@@ -84,7 +85,7 @@ public:
     timestamp_start = std::chrono::high_resolution_clock::now();
   }
 
-  void Stop() {
+  double Stop() {
     std::chrono::duration<double> latency_tot = std::chrono::high_resolution_clock::now() - timestamp_start;
     double latency = latency_tot.count();
     if (is_initialized) {
@@ -101,12 +102,56 @@ public:
       moving_avg=latency;
       is_initialized = true;
     }
+    return latency;
   }
 
   double getAverage() {return moving_avg;}
   double getMin() {return min;}
   double getMax() {return max;}
 };
+
+
+/**
+ * @brief getStateFromJSON This function extracts data from JSON message coming from simulator
+ * @param json JSON object
+ * @return {MeasurementPackage} a MeasurementPackage where sensor_type_=MPC_PRJ_SIM
+ * and raw_measurements_ include following measurements:
+ * [0] px
+ * [1] py
+ * [2] psi (Orientation in radians)
+ * [3] velocity (meters / second)
+ * [4] Steering angle in radians (converted into car local coordination)
+ * [5] throttle value
+ */
+MeasurementPackage getStateFromJSON(nlohmann::json* obj, MeasurementPackage previous_meas) {
+  MeasurementPackage meas_pack = MeasurementPackage();
+  meas_pack.timestamp_ = std::chrono::high_resolution_clock::now();
+  Eigen::VectorXd measurements(7);
+  measurements.fill(0.0);
+  measurements(0) = (*obj)[1]["x"];
+  measurements(1) = (*obj)[1]["y"];
+  measurements(2) = 0.44704 *(double)(*obj)[1]["speed"]; // convert mph to meters/second
+  measurements(3) = (*obj)[1]["psi"];
+  measurements(4) = -(double)(*obj)[1]["steering_angle"];  // Invert steering angle (delta)
+  //measurements(5) = (*obj)[1]["throttle"];
+  // Calculate accelaration from previous measurement
+
+
+  // Calculate acceleration and yaw-rate
+  // Check that previous_meas is initialized by checking the measurement type
+  if (previous_meas.sensor_type_ == MeasurementPackage::SensorType::MPC_PRJ_SIM) {
+    std::chrono::duration<double> time_diff = meas_pack.timestamp_ - previous_meas.timestamp_;
+    double delta_t = time_diff.count();
+    double delta_v = measurements(2) - previous_meas.raw_measurements_(2);
+    double a = delta_v / delta_t;
+    double yawd = (measurements(2)/MPC::Lf) * measurements(4);
+    measurements(5) = a;
+    measurements(6) = yawd;
+  }
+  meas_pack.raw_measurements_ = measurements;
+  meas_pack.sensor_type_ = MeasurementPackage::SensorType::MPC_PRJ_SIM;
+  return meas_pack;
+}
 
 int main() {
   uWS::Hub h;
@@ -115,7 +160,11 @@ int main() {
   // MPC is initialized here!
   MPC mpc;
 
-  h.onMessage([&mpc, &timer](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+ MeasurementPackage previous_meas;
+ previous_meas.raw_measurements_.fill(0.0);
+ previous_meas.sensor_type_ = MeasurementPackage::UNKNOWN;
+
+  h.onMessage([&mpc, &timer, &previous_meas](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     timer.Start();
     // "42" at the start of the message means there's a websocket message event.
@@ -129,10 +178,10 @@ int main() {
         auto j = json::parse(s);
         string event = j[0].get<string>();
         if (event == "telemetry") {
+          MeasurementPackage meas = getStateFromJSON(&j, previous_meas);
+          previous_meas = meas;
+          std::cout << meas.raw_measurements_ << std::endl;
           // j[1] is the data JSON object
-          // Get xy way points from simulator
-          vector<double> ptsx = j[1]["ptsx"];
-          vector<double> ptsy = j[1]["ptsy"];
           // Get car's current state
           const double px_0 = j[1]["x"];
           const double py_0 = j[1]["y"];
@@ -140,60 +189,72 @@ int main() {
           const double v_0 = 0.44704 *(double)j[1]["speed"]; // convert mph to meters/second
           const double delta_0 = -(double)j[1]["steering_angle"];  // Invert steering angle (delta)
           const double a_0 = j[1]["throttle"];
+          // Get xy way points from simulator
+          vector<double> ptsx = j[1]["ptsx"];
+          vector<double> ptsy = j[1]["ptsy"];
 
 
           // Convert world coordinates to car-local coordinate system
           // Rotate 90-degrees to right so that car front is pointing
           // along x-axis --> This makes polynomial fit easier because
           // then we are looking for horizontallish line
-          Eigen::VectorXd ptsx_transform(ptsx.size());
-          Eigen::VectorXd ptsy_transform(ptsy.size());
+          Eigen::VectorXd ptsx_transform_0(ptsx.size());
+          Eigen::VectorXd ptsy_transform_0(ptsy.size());
           for (uint i=0; i < ptsx.size(); i++) {
               const double shift_x = ptsx[i] - px_0;
               const double shift_y = ptsy[i] - py_0;
-              ptsx_transform(i) = (shift_x*cos(-psi_0) - shift_y*sin(-psi_0));
-              ptsy_transform(i) = (shift_x*sin(-psi_0) + shift_y*cos(-psi_0));
+              ptsx_transform_0(i) = (shift_x*cos(-psi_0) - shift_y*sin(-psi_0));
+              ptsy_transform_0(i) = (shift_x*sin(-psi_0) + shift_y*cos(-psi_0));
           }
 
-          //  Get 3rd order polynomial coefficients of given waypoints
-          auto coeffs = polyfit(ptsx_transform, ptsy_transform, 3);
 
-          double cte_0 = polyeval(coeffs, 0);
-          double epsi_0 = -atan(coeffs[1]);
+          //  Get 3rd order polynomial coefficients of given waypoints
+          auto coeffs_0 = polyfit(ptsx_transform_0, ptsy_transform_0, 3);
+
+          // Calculate cte and epsi without effect of latency
+          double cte_0 = polyeval(coeffs_0, 0);
+          // Complete epsi equation for reference
+          // double epsi = psi - atan(coeffs[1] + 2 * px * coeffs[3] + 3 * coeffs[3] * pow(px, 2))
+          // And it gets simplified to below equation becauce px=0 and psi=0
+          double epsi_0 = -atan(coeffs_0[1]);
 
           // Here x,y and psi are zero because state is in car's coordinate
           // system
           Eigen::VectorXd state(6);
           const double latency = timer.getAverage();
-          if (latency > 0.005) {
-            // Taking latency into account
-            //px = 0 + v * sin(steer_value) * latency;
-            //py = 0 + v * cos(steer_value) * latency;
-            //px = v * latency;
-            //py = 0;
-            //TODO: Separete t and t+1 variables
-            const double px_1 = v_0 * cos(delta_0) * latency;
-            const double py_1 = v_0 * sin(delta_0) * latency;
-            const double  psi_1 = (v_0/MPC::Lf) * delta_0 * latency;
-            //epsi = -atan(coeffs[1]) + (v/MPC::Lf) * steer_value * latency;
-            const double  epsi_1 = -atan(coeffs[1]) + (v_0/MPC::Lf) * delta_0 * latency;
-            const double  cte_1 = polyeval(coeffs,0) + v_0 * sin(epsi_0) * latency;
-            const double v_1 = v_0 + a_0 * latency;
-            state << px_1, py_1, psi_1, v_1, cte_1, epsi_1;
+          //const double latency = 0.1;
+          // Predict car position after latency time
+          const double psi_1 = (v_0/MPC::Lf) * delta_0 * latency;
+          const double px_1 = v_0 * cos(delta_0) * latency;  // delta_0
+          const double py_1 = v_0 * sin(delta_0) * latency;  // delta_0
+          const double epsi_1 = epsi_0 + (v_0/MPC::Lf) * delta_0 * latency;
+          const double cte_1 = cte_0 + v_0 * sin(epsi_0) * latency;
+          const double v_1 = v_0 + a_0 * latency;
+          state << px_1, py_1, psi_1, v_1, cte_1, epsi_1;
+
+
+          // Convert world coordinates to car-local coordinate system
+          // Rotate 90-degrees to right so that car front is pointing
+          // along x-axis --> This makes polynomial fit easier because
+          // then we are looking for horizontallish line
+          Eigen::VectorXd ptsx_transform_1(ptsx.size());
+          Eigen::VectorXd ptsy_transform_1(ptsy.size());
+          for (uint i=0; i < ptsx.size(); i++) {
+              //const double shift_x = ptsx[i] - px_1;
+              //const double shift_y = ptsy[i] - py_1;
+              //ptsx_transform_1(i) = (shift_x*cos(-psi_1) - shift_y*sin(-psi_1));
+              //ptsy_transform_1(i) = (shift_x*sin(-psi_1) + shift_y*cos(-psi_1));
+              ptsx_transform_1(i) = ptsx_transform_0(i) + px_1;
+              ptsy_transform_1(i) = ptsy_transform_0(i) + py_1;
           }
-          else {
-            // Calculate cte and epsi without effect of latency
-            cte_0 = polyeval(coeffs, 0);
-            // Complete epsi equation for reference
-            // double epsi = psi - atan(coeffs[1] + 2 * px * coeffs[3] + 3 * coeffs[3] * pow(px, 2))
-            // And it gets simplified to below equation becauce px=0 and psi=0
-            epsi_0 = -atan(coeffs[1]);
-            state << 0, 0, 0, v_0, cte_0, epsi_0;
-          }
+
+          //  Get 3rd order polynomial coefficients of given waypoints
+          auto coeffs_1 = polyfit(ptsx_transform_1, ptsy_transform_1, 3);
+
+
 
           // Solve steering angle, throttle and predicted trajectory
-
-          auto vars = mpc.Solve(state, coeffs);
+          auto vars = mpc.Solve(state, coeffs_1);
 
 
 
@@ -205,7 +266,7 @@ int main() {
           int num_points = 20;
           for (int i = 1; i < num_points; i++) {
               next_x_vals.push_back(poly_inc*i);
-              next_y_vals.push_back(polyeval(coeffs, poly_inc*i));
+              next_y_vals.push_back(polyeval(coeffs_1, poly_inc*i));
           }
 
 
@@ -256,8 +317,8 @@ int main() {
           // NOTE: REMEMBER TO SET THIS TO 100 MILLISECONDS BEFORE
           // SUBMITTING.
           this_thread::sleep_for(chrono::milliseconds(100));
-          timer.Stop();
-          //std::cout << "Total latency = " << timer.getAverage() << std::endl;
+          double lat = timer.Stop();
+          std::cout << "Latency: loop=" << lat << " Avg=" << timer.getAverage() << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
         }
       } else {
