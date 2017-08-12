@@ -13,18 +13,6 @@ class MPC {
   void InitOptionsString();
 
  public:
-  // This value assumes the model presented in the classroom is used.
-  //
-  // It was obtained by measuring the radius formed by running the vehicle in the
-  // simulator around in a circle with a constant steering angle and velocity on a
-  // flat terrain.
-  //
-  // Lf was tuned until the the radius formed by the simulating the model
-  // presented in the classroom matched the previous radius.
-  //
-  // This is the length from front to CoG(Center of Gravity) that has a similar radius.
-  static constexpr double Lf = 2.67;
-
   MPC();
 
   virtual ~MPC();

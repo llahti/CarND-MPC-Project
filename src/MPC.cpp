@@ -2,6 +2,7 @@
 #include <cppad/cppad.hpp>
 #include <cppad/ipopt/solve.hpp>
 #include "Eigen-3.3/Eigen/Core"
+#include "vehicle.h"
 
 using CppAD::AD;
 
@@ -16,7 +17,7 @@ double dt = 0.12;
 // The reference velocity is set to 40 mph.
 double ref_cte = 0;
 double ref_epsi = 0;
-double ref_v = 20;
+double ref_v = 10;
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -137,12 +138,12 @@ class FG_eval {
       // epsi[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
       fg[2 + x_start   + t] = x1   - (x0 + v0 * CppAD::cos(psi0) * dt);
       fg[2 + y_start   + t] = y1   - (y0 + v0 * CppAD::sin(psi0) * dt);
-      fg[2 + psi_start + t] = psi1 - (psi0 + (v0 / MPC::Lf)* delta0 * dt);
+      fg[2 + psi_start + t] = psi1 - (psi0 + (v0 / Vehicle.Lf)* delta0 * dt);
       fg[2 + v_start   + t] = v1   - (v0 + a0 * dt);
       fg[2 + cte_start + t] =
           cte1 - ((f0 - y0) + (v0 * CppAD::sin(epsi0) * dt));
       fg[2 + epsi_start + t] =
-          epsi1 - ((psi0 - psides0) - v0 * delta0 / MPC::Lf * dt);
+          epsi1 - ((psi0 - psides0) - v0 * delta0 / Vehicle.Lf * dt);
     }
   }
 };
@@ -230,8 +231,8 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   // NOTE: Feel free to change this to something else.
   // TODO: Check what is function of multiplying by Lf
   for (uint i = delta_start; i < a_start; i++) {
-    vars_lowerbound[i] = -0.436332 * Lf;
-    vars_upperbound[i] = 0.436332 * Lf;
+    vars_lowerbound[i] = -0.436332 * Vehicle.Lf;
+    vars_upperbound[i] = 0.436332 * Vehicle.Lf;
   }
 
 

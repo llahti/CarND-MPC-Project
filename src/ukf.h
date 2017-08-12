@@ -9,6 +9,7 @@
 #include <chrono>
 #include "tools.h"
 
+
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
@@ -23,10 +24,6 @@ private:
 
   // Previous simulation data pack is needed for acceleration calculations
   MeasurementPackage previous_simdata;
-
-  struct VehicleModel {
-    const double Lf = 2.67;
-  } vehicle;
 
 public:
 
@@ -59,16 +56,16 @@ public:
   //MatrixXd S_rad_;
 
   ///* sigma points matrix
-  MatrixXd Xsig_;
+  //MatrixXd Xsig_;
 
   ///* predicted sigma points matrix
   MatrixXd Xsig_pred_;
 
   ///* augmented sigma points matrix
-  MatrixXd Xsig_aug_;
+  //MatrixXd Xsig_aug_;
 
   ///* time when the state is true, in us
-  long long time_us_;
+  //long long time_us_;
 
   ///* Process noise standard deviation longitudinal acceleration in m/s^2
   double std_a_;
@@ -143,7 +140,7 @@ public:
    * matrix
    * @param delta_t Time between k and k+1 in s
    */
-  void Prediction(double delta_t);
+  Eigen::VectorXd Prediction(double delta_t);
 
 
   /**
@@ -163,17 +160,17 @@ public:
   /**
    * @brief GenerateSigmaPoints
    */
-  void GenerateSigmaPoints();
+  Eigen::MatrixXd GenerateSigmaPoints();
 
 
   /**
    * @brief AugmentedSigmaPoints
    */
-  void AugmentedSigmaPoints();
+  Eigen::MatrixXd AugmentedSigmaPoints();
 
-  void SigmaPointPrediction(double delta_t);
+  Eigen::MatrixXd SigmaPointPrediction(double delta_t, Eigen::MatrixXd* Xsig_aug);
 
-  void PredictMeanAndCovariance();
+  Eigen::VectorXd PredictMeanAndCovariance(Eigen::MatrixXd* Xsig_pred);
 
   //void PredictLidarMeasurement(VectorXd* z_pred_out);
 

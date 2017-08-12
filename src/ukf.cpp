@@ -36,19 +36,15 @@ UKF::UKF() {
   // [px py yaw_angle yaw_rate vel_abs acceleration steer_angle]
   x_ = VectorXd(n_x_);
   x_.fill(0.0);
-  //x_previous = VectorXd(n_x_);
-  //x_previous.fill(0.0);
+
+  //
+  // This vector can be reused to generate diagonal matrices size of (n_x_ , n_x_)
+  VectorXd nx_diag = VectorXd(n_x_);
 
   // initial covariance matrix, fill diagonal with 0.5
-  VectorXd p_diag = VectorXd(n_x_);
-  p_diag.fill(0.5);
+  nx_diag.fill(0.5);
   P_ = MatrixXd(n_x_, n_x_);
-  P_= p_diag.asDiagonal();
-  //P_ << 0.5, 0., 0., 0., 0.,
-  //      0., 0.5, 0., 0., 0.,
-  //      0., 0., 0.5, 0., 0.,
-  //      0., 0., 0., 0.5, 0.,
-  //      0., 0., 0., 0., 0.5;
+  P_= nx_diag.asDiagonal();
 
   // Initialize covariance matrix for augmented sigmapoints
   P_aug_ = MatrixXd(n_aug_, n_aug_);
@@ -64,13 +60,11 @@ UKF::UKF() {
   std_yawdd_ = 1;
 
 
-  // Kalman Filter Matrices for Lidar update
-  //H_lidar_ = MatrixXd(2, 7);
-  //H_lidar_ << 1, 0, 0, 0, 0, 0, 0,
-  //            0, 1, 0, 0, 0, 0, 0;
-
   // Define what measurements are used in update
+  nx_diag.fill(1.0);
   H_simulator_ = MatrixXd(n_x_, n_x_);
+  H_simulator_ = nx_diag.asDiagonal();
+  /*
   H_simulator_ << 1, 0, 0, 0, 0, 0, 0,
                   0, 1, 0, 0, 0, 0, 0,
                   0, 0, 1, 0, 0, 0, 0,
@@ -78,36 +72,36 @@ UKF::UKF() {
                   0, 0, 0, 0, 1, 0, 0,
                   0, 0, 0, 0, 0, 1, 0,
                   0, 0, 0, 0, 0, 0, 1;
-
+*/
   // Initialize lidar measurement covariance matrix
   //R_lidar_ = MatrixXd(2, 2);
   //R_lidar_ << pow(std_laspx_, 2), 0,
   //            0, pow(std_laspy_, 2);
 
 
-  VectorXd r = VectorXd(n_x_);
-  r << pow(simulator_consts.std_px_, 2),
-       pow(simulator_consts.std_py_, 2),
-       pow(simulator_consts.std_speed_, 2),
-       pow(simulator_consts.std_yaw_, 2),
-       pow(simulator_consts.std_steerangle_, 2),
-       pow(simulator_consts.std_accel_, 2),
-       pow(simulator_consts.std_yawdd_, 2);
+  //VectorXd r = VectorXd(n_x_);
+  nx_diag << pow(simulator_consts.std_px_, 2),
+             pow(simulator_consts.std_py_, 2),
+             pow(simulator_consts.std_speed_, 2),
+             pow(simulator_consts.std_yaw_, 2),
+             pow(simulator_consts.std_steerangle_, 2),
+             pow(simulator_consts.std_accel_, 2),
+             pow(simulator_consts.std_yawdd_, 2);
   R_simulator_ = MatrixXd(n_x_, n_x_);
-  R_simulator_ = r.asDiagonal();
+  R_simulator_ = nx_diag.asDiagonal();
 
 
   // Initialize sigmapoints matrix
-  Xsig_ = MatrixXd(n_x_, n_sp_x_);
-  Xsig_.fill(0.0);
+  //Xsig_ = MatrixXd(n_x_, n_sp_x_);
+  //Xsig_.fill(0.0);
 
   // Initialize predicted sigma points with zero
   Xsig_pred_ = MatrixXd(n_x_, n_sp_xaug_);
   Xsig_pred_.fill(0.0);
 
   // Initialize augmented sigma points with zero
-  Xsig_aug_ = MatrixXd(n_aug_, n_sp_xaug_);
-  Xsig_aug_.fill(0.0);
+  //Xsig_aug_ = MatrixXd(n_aug_, n_sp_xaug_);
+  //Xsig_aug_.fill(0.0);
 
   // Initialize weights
   weights_ = VectorXd(n_sp_xaug_);
@@ -128,7 +122,7 @@ UKF::~UKF() {}
 /**
  * @brief UKF::AugmentedSigmaPoints
  */
-void UKF::AugmentedSigmaPoints() {
+Eigen::MatrixXd UKF::AugmentedSigmaPoints() {
   //create augmented mean vector
   VectorXd x_aug = VectorXd(n_aug_);
   x_aug.fill(0.0);
@@ -141,7 +135,8 @@ void UKF::AugmentedSigmaPoints() {
   P_aug_.fill(0.0);
 
   //create sigma point matrix
-  Xsig_aug_.fill(0.0);
+  MatrixXd Xsig_aug = MatrixXd(n_aug_, n_sp_xaug_);
+  Xsig_aug.fill(0.0);
 
   //create augmented covariance matrix by inserting P_ matrix to top-left corner
   P_aug_.topLeftCorner(7,7) = P_;
@@ -153,12 +148,14 @@ void UKF::AugmentedSigmaPoints() {
   MatrixXd L = P_aug_.llt().matrixL();
 
   //create augmented sigma points
-  Xsig_aug_.col(0)  = x_aug;  // Mean state
-  for (int i = 0; i<n_aug_; i++)
+  Xsig_aug.col(0)  = x_aug;  // Mean state
+  for (int i = 0; i < n_aug_; i++)
   {
-    Xsig_aug_.col(i+1)        = x_aug + sqrt(lambda_aug_+n_aug_) * L.col(i);
-    Xsig_aug_.col(i+1+n_aug_) = x_aug - sqrt(lambda_aug_+n_aug_) * L.col(i);
+    Xsig_aug.col(i+1)        = x_aug + sqrt(lambda_aug_+n_aug_) * L.col(i);
+    Xsig_aug.col(i+1+n_aug_) = x_aug - sqrt(lambda_aug_+n_aug_) * L.col(i);
   }
+
+  return Xsig_aug;
 }
 
 /**
@@ -178,7 +175,7 @@ void UKF::FirstUpdate(MeasurementPackage measurement_pack) {
           measurement_pack.raw_measurements_[3],  // yaw-angle
           measurement_pack.raw_measurements_[4],  // steering angle
           0.0,                                    // acceleration, not properly returned from simulator
-          0.0;                                    // yaw_rate
+          measurement_pack.raw_measurements_[6];  // yaw_rate
    }
   previous_timestamp_ = measurement_pack.timestamp_;
   previous_simdata = measurement_pack;
@@ -192,21 +189,25 @@ void UKF::FirstUpdate(MeasurementPackage measurement_pack) {
 /**
  * This method generates sigma-points and calculations depends on instance variables P_, n_x_, n_sp_x_ and x_.
  * @brief UKF::GenerateSigmaPoints
- * @param Xsig_out
+ * @return Sigma points matrix
  */
-void UKF::GenerateSigmaPoints() {
+Eigen::MatrixXd UKF::GenerateSigmaPoints() {
+  // Initialize sigmapoints matrix
+  MatrixXd Xsig = MatrixXd(n_x_, n_sp_x_);
+  Xsig.fill(0.0);
   //calculate square root of P
   MatrixXd A = P_.llt().matrixL();
-  Xsig_.fill(0.0);
+  //Xsig.fill(0.0);
   //set first column of sigma point matrix
-  Xsig_.col(0) = x_;
+  Xsig.col(0) = x_;
 
   //set remaining sigma points
   for (int i = 0; i < n_x_; i++)
   {
-    Xsig_.col(i+1)     = x_ + sqrt(lambda_+n_x_) * A.col(i);
-    Xsig_.col(i+1+n_x_) = x_ - sqrt(lambda_+n_x_) * A.col(i);
+    Xsig.col(i+1)     = x_ + sqrt(lambda_+n_x_) * A.col(i);
+    Xsig.col(i+1+n_x_) = x_ - sqrt(lambda_+n_x_) * A.col(i);
   }
+  return Xsig;
 }
 
 
@@ -215,14 +216,16 @@ void UKF::GenerateSigmaPoints() {
  * @param {double} delta_t the change in time (in seconds) between the last
  * measurement and this one.
  */
-void UKF::Prediction(double delta_t) {
+Eigen::VectorXd UKF::Prediction(double delta_t) {
   // 1. Generate sigma points
-  GenerateSigmaPoints();
+  MatrixXd Xsig = GenerateSigmaPoints();
   // 2. Predict sigma points
-  AugmentedSigmaPoints();
-  SigmaPointPrediction(delta_t);
+  MatrixXd Xsig_aug = AugmentedSigmaPoints();
+  MatrixXd Xsig_pred = SigmaPointPrediction(delta_t, &Xsig_aug);
+  Xsig_pred_ = Xsig_pred;  // save for later measurement prediction step
   // 3. Predict mean and covariance matrix
-  PredictMeanAndCovariance();
+  VectorXd new_x = PredictMeanAndCovariance(&Xsig_pred);
+  return new_x;
 }
 
 /**
@@ -250,7 +253,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     std::cout << "UKF: Measurement time difference unreasonable small!\n";
   }
   // Predict k+1 state
-  Prediction(dt);
+  x_ = Prediction(dt);
 
   /**********
    * Update
@@ -265,8 +268,11 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     double delta_v = meas_package.raw_measurements_(2) - previous_simdata.raw_measurements_(2);
     double a = 0;
     if (delta_t < 0.00001) {a = 0;}
-    else { a = delta_v / delta_t; }  // Calculate acceleration from speed change
-    double yawd = (meas_package.raw_measurements_(2)/vehicle.Lf) * meas_package.raw_measurements_(4);
+    else { a = delta_v / delta_t; } // Calculate acceleration from speed change
+    // yawd = (speed/Lf) * steering_angle
+    //double yawd = (meas_package.raw_measurements_(2)/vehicle.Lf) * meas_package.raw_measurements_(4);
+    // Other way to calculate yaw is by using previous yaw-angle
+    double yawd = (meas_package.raw_measurements_(3) - previous_simdata.raw_measurements_(3)) / delta_t;
     meas_package.raw_measurements_(5) = a;
     meas_package.raw_measurements_(6) = yawd;
     // Update state with simulation data
@@ -274,7 +280,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     // Save measpackage for next round
     previous_simdata = meas_package;
   }
-  return;
+  //return;
 }
 
 
@@ -283,21 +289,22 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
  * @brief UKF::SigmaPointPrediction
  * @param delta_t time difference between this and previus state
  */
-void UKF::SigmaPointPrediction(double delta_t) {
-  Xsig_pred_.fill(0.0);
+Eigen::MatrixXd UKF::SigmaPointPrediction(double delta_t, Eigen::MatrixXd* Xsig_aug) {
+  MatrixXd Xsig_pred = MatrixXd(n_x_, n_sp_xaug_);
+  Xsig_pred.fill(0.0);
 
   //predict sigma points
   for(int i=0; i < n_sp_xaug_; i++){
     // Variables to store (previous state) xk values for easier access to them
-    double p_x = Xsig_aug_(0, i);       // px
-    double p_y = Xsig_aug_(1, i);       // py
-    double v = Xsig_aug_(2, i);         // speed
-    double yaw = Xsig_aug_(3, i);       // yaw-angle
-    double delta = Xsig_aug_(4, i);     // delta-angle (steering)
-    double a = Xsig_aug_(5, i);         // acceleration
-    double yawd = Xsig_aug_(6, i);      // yaw-rate
-    double nu_a = Xsig_aug_(7, i);      // accelaration noise
-    double nu_yawdd = Xsig_aug_(7, i);  // yaw-rate noise
+    double p_x = (*Xsig_aug)(0, i);       // px
+    double p_y = (*Xsig_aug)(1, i);       // py
+    double v = (*Xsig_aug)(2, i);         // speed
+    double yaw = (*Xsig_aug)(3, i);       // yaw-angle
+    double delta = (*Xsig_aug)(4, i);     // delta-angle (steering)
+    double a = (*Xsig_aug)(5, i);         // acceleration
+    double yawd = (*Xsig_aug)(6, i);      // yaw-rate
+    double nu_a = (*Xsig_aug)(7, i);      // accelaration noise
+    double nu_yawdd = (*Xsig_aug)(7, i);  // yaw-rate noise
 
     //predicted state values
     double px_p, py_p;
@@ -329,51 +336,35 @@ void UKF::SigmaPointPrediction(double delta_t) {
     yawd_p = yawd_p + nu_yawdd*delta_t;
 
     //write predicted sigma points into i-th column
-    Xsig_pred_(0,i) = px_p;
-    Xsig_pred_(1,i) = py_p;
-    Xsig_pred_(2,i) = v_p;
-    Xsig_pred_(3,i) = yaw_p;
-    Xsig_pred_(4,i) = delta_p;
-    Xsig_pred_(5,i) = a_p;
-    Xsig_pred_(6,i) = yawd_p;
+    Xsig_pred(0,i) = px_p;
+    Xsig_pred(1,i) = py_p;
+    Xsig_pred(2,i) = v_p;
+    Xsig_pred(3,i) = yaw_p;
+    Xsig_pred(4,i) = delta_p;
+    Xsig_pred(5,i) = a_p;
+    Xsig_pred(6,i) = yawd_p;
   }
+  return Xsig_pred;
 }
 
-void UKF::PredictMeanAndCovariance() {
+Eigen::VectorXd UKF::PredictMeanAndCovariance(Eigen::MatrixXd* Xsig_pred) {
   //predict state mean
-  x_ = Xsig_pred_ * weights_;
+  VectorXd new_x = (*Xsig_pred) * weights_;
 
   //predict state covariance matrix
   P_.fill(0.0);
   for (int i=0; i < n_sp_xaug_; i++){
       // Calculate difference
-      VectorXd x_diff = Xsig_pred_.col(i) - x_;
+      VectorXd x_diff = (*Xsig_pred).col(i) - new_x;
       // Normalize angle yaw and delta angles
       x_diff(3) = tools.NormalizeAngle(x_diff(3));
       x_diff(4) = tools.NormalizeAngle(x_diff(4));
 
       P_ = P_ + weights_(i) * x_diff * x_diff.transpose();
   }
+  return new_x;
 }
 
-/**
- * @brief UKF::PredictLidarMeasurement
- * @param z_pred_out
- */
-/*
-void UKF::PredictLidarMeasurement(VectorXd *z_pred_out) {
-  //create matrix for sigma points in measurement space and get px and py
-  MatrixXd Zsig = MatrixXd(n_z_lidar_, n_sp_xaug_);
-  Zsig = Xsig_pred_.block(0, 0, n_z_lidar_, n_sp_xaug_);
-
-  //calculate predicted measurement
-  VectorXd z_pred = VectorXd(n_z_lidar_);
-  z_pred = Zsig * weights_;
-
-  //write result
-  *z_pred_out = z_pred;
-}
-*/
 
 /**
  * @brief UKF::PredictSimulatorMeasurement

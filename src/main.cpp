@@ -11,6 +11,7 @@
 #include "json.hpp"
 #include "measurement_package.h"
 #include "ukf.h"
+#include "vehicle.h"
 
 // for convenience
 using json = nlohmann::json;
@@ -112,38 +113,7 @@ public:
 };
 
 
-/**
- * @brief getStateFromJSON This function extracts data from JSON message coming from simulator
- * @param json JSON object
- * @return {MeasurementPackage} a MeasurementPackage where sensor_type_=MPC_PRJ_SIM
- * and raw_measurements_ include following measurements:
- * [0] px
- * [1] py
- * [2] psi (Orientation in radians)
- * [3] velocity (meters / second)
- * [4] Steering angle in radians (converted into car local coordination)
- * [5] throttle value
- */
-MeasurementPackage getStateFromJSON(nlohmann::json* obj) {
-  std::chrono::time_point<std::chrono::high_resolution_clock> timestamp;
-  timestamp = std::chrono::high_resolution_clock::now();
-  // Extract data from JSON package
-  Eigen::VectorXd measurements(7);
-  measurements.fill(0.0);
-  measurements(0) = (*obj)[1]["x"];
-  measurements(1) = (*obj)[1]["y"];
-  measurements(2) = 0.44704 *(double)(*obj)[1]["speed"]; // convert mph to meters/second
-  measurements(3) = (*obj)[1]["psi"];
-  measurements(4) = -(double)(*obj)[1]["steering_angle"];  // Invert steering angle (delta)
-  measurements(5) = (*obj)[1]["throttle"];
-  measurements(6) = (measurements(2)/MPC::Lf) * measurements(4);
-  // Finalize measurement pack and return it
-  MeasurementPackage meas_pack = MeasurementPackage();
-  meas_pack.raw_measurements_ = measurements;
-  meas_pack.sensor_type_ = MeasurementPackage::SensorType::MPC_PRJ_SIM;
-  meas_pack.timestamp_ = timestamp;
-  return meas_pack;
-}
+
 
 int main() {
   uWS::Hub h;
@@ -165,41 +135,20 @@ int main() {
       string s = hasData(sdata);
       if (s != "") {
         auto j = json::parse(s);
+        // j[0] is a event type of message
+        // j[1] is the json object which contains telemetry data
         string event = j[0].get<string>();
         if (event == "telemetry") {
           MeasurementPackage meas = getStateFromJSON(&j);
-          std::cout << "RAW meas: " << meas.raw_measurements_ << std::endl;
+          std::cout << "RAW meas: \n" << meas.raw_measurements_ << std::endl;
           ukf.ProcessMeasurement(meas);
-          std::cout << "UKF est.: " << ukf.x_ << std::endl;
-          // j[1] is the data JSON object
-          // Get car's current state
-          const double px_0 = j[1]["x"];
-          const double py_0 = j[1]["y"];
-          const double psi_0 = j[1]["psi"];
-          const double v_0 = 0.44704 *(double)j[1]["speed"]; // convert mph to meters/second
-          const double delta_0 = -(double)j[1]["steering_angle"];  // Invert steering angle (delta)
-          const double a_0 = j[1]["throttle"];
-          // Get xy way points from simulator
-          vector<double> ptsx = j[1]["ptsx"];
-          vector<double> ptsy = j[1]["ptsy"];
+          std::cout << "UKF updated x_:\n" << ukf.x_ << std::endl;
 
-
-          // Convert world coordinates to car-local coordinate system
-          // Rotate 90-degrees to right so that car front is pointing
-          // along x-axis --> This makes polynomial fit easier because
-          // then we are looking for horizontallish line
-          Eigen::VectorXd ptsx_transform_0(ptsx.size());
-          Eigen::VectorXd ptsy_transform_0(ptsy.size());
-          for (uint i=0; i < ptsx.size(); i++) {
-              const double shift_x = ptsx[i] - px_0;
-              const double shift_y = ptsy[i] - py_0;
-              ptsx_transform_0(i) = (shift_x*cos(-psi_0) - shift_y*sin(-psi_0));
-              ptsy_transform_0(i) = (shift_x*sin(-psi_0) + shift_y*cos(-psi_0));
-          }
-
-
+          vector<Eigen::VectorXd> waypoints_global = getWaypointsFromJSON(&j);
+          vector<Eigen::VectorXd> waypoints_trans = transformWaypoints(waypoints_global, ukf.x_(0), ukf.x_(1), ukf.x_(3));
+          //std::cout << "Waypoints x\n" << waypoints_trans[0] << "Waypoints y\n"<< waypoints_trans[1] << std::endl;
           //  Get 3rd order polynomial coefficients of given waypoints
-          auto coeffs_0 = polyfit(ptsx_transform_0, ptsy_transform_0, 3);
+          auto coeffs_0 = polyfit(waypoints_trans[0], waypoints_trans[1], 3);
 
           // Calculate cte and epsi without effect of latency
           double cte_0 = polyeval(coeffs_0, 0);
@@ -213,13 +162,22 @@ int main() {
           Eigen::VectorXd state(6);
           const double latency = timer.getAverage();
           //const double latency = 0.1;
+          Eigen::VectorXd x_latency = ukf.Prediction(latency);
+          std::cout << "State after latency: \n" << x_latency << std::endl;
+          const double delta_0 = ukf.x_(4);
+          const double v_0 = ukf.x_(2);
+          const double a_0 = ukf.x_(5);
+
           // Predict car position after latency time
-          const double psi_1 = (v_0/MPC::Lf) * delta_0 * latency;
+          const double psi_1 = (v_0/Vehicle.Lf) * delta_0 * latency;
           const double px_1 = v_0 * cos(delta_0) * latency;  // delta_0
           const double py_1 = v_0 * sin(delta_0) * latency;  // delta_0
-          const double epsi_1 = epsi_0 + (v_0/MPC::Lf) * delta_0 * latency;
-          const double cte_1 = cte_0 + v_0 * sin(epsi_0) * latency;
           const double v_1 = v_0 + a_0 * latency;
+
+
+          const double epsi_1 = epsi_0 + (v_0/Vehicle.Lf) * delta_0 * latency;
+          const double cte_1 = cte_0 + v_0 * sin(epsi_0) * latency;
+
           state << px_1, py_1, psi_1, v_1, cte_1, epsi_1;
 
 
@@ -227,6 +185,7 @@ int main() {
           // Rotate 90-degrees to right so that car front is pointing
           // along x-axis --> This makes polynomial fit easier because
           // then we are looking for horizontallish line
+          /*
           Eigen::VectorXd ptsx_transform_1(ptsx.size());
           Eigen::VectorXd ptsy_transform_1(ptsy.size());
           for (uint i=0; i < ptsx.size(); i++) {
@@ -237,9 +196,11 @@ int main() {
               ptsx_transform_1(i) = ptsx_transform_0(i) + px_1;
               ptsy_transform_1(i) = ptsy_transform_0(i) + py_1;
           }
+          */
 
+          vector<Eigen::VectorXd> waypoints_1 = transformWaypoints(waypoints_global, x_latency(0), x_latency(1), x_latency(3));
           //  Get 3rd order polynomial coefficients of given waypoints
-          auto coeffs_1 = polyfit(ptsx_transform_1, ptsy_transform_1, 3);
+          auto coeffs_1 = polyfit(waypoints_1[0], waypoints_1[1], 3);
 
 
 
@@ -276,7 +237,7 @@ int main() {
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
-          msgJson["steering_angle"] = -vars[0]/(deg2rad(25)*MPC::Lf);
+          msgJson["steering_angle"] = -vars[0]/(deg2rad(25)*Vehicle.Lf);
           msgJson["throttle"] = vars[1];
           //msgJson["throttle"] = 0.2;
 
