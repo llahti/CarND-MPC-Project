@@ -40,7 +40,6 @@ public:
  * [3] psi (Yaw or Orientation in radians)
  * [4] Steering angle in radians (converted into car local coordination)
  * [5] throttle value
- * [6] yaw-angle
  */
 MeasurementPackage getStateFromJSON(nlohmann::json* obj);
 
@@ -54,8 +53,10 @@ MeasurementPackage getStateFromJSON(nlohmann::json* obj);
  * [0] {Eigen::VectorXd} x-positions
  * [1] {Eigen::VectorXd} y-positions
  */
-vector<Eigen::VectorXd> getWaypointsFromJSON(nlohmann::json* obj);
+vector<VectorXd> getWaypointsFromJSON(nlohmann::json* obj);
 
+
+void printState(VectorXd* x, string tag);
 
 /**
 Simulator gives waypoint
@@ -75,9 +76,17 @@ Simulator gives waypoint
  * [0] {Eigen::VectorXd} x-positions
  * [1] {Eigen::VectorXd} y-positions
  */
-vector<Eigen::VectorXd> transformWaypoints(const vector<Eigen::VectorXd> waypoints,
+vector<VectorXd> transformWaypoints(const vector<Eigen::VectorXd> waypoints,
                                            const double vehicle_x,
                                            const double vehicle_y,
                                            const double yaw);
 
+// For converting back and forth between radians and degrees.
+double deg2rad(double x);
+double rad2deg(double x);
+
+string hasData(string s);
+double polyeval(VectorXd coeffs, double x);
+Eigen::VectorXd polyfit(VectorXd xvals, VectorXd yvals,
+                        int order);
 #endif /* TOOLS_H_ */

@@ -274,7 +274,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     // Other way to calculate yaw is by using previous yaw-angle
     double yawd = (meas_package.raw_measurements_(3) - previous_simdata.raw_measurements_(3)) / delta_t;
     meas_package.raw_measurements_(5) = a;
-    meas_package.raw_measurements_(6) = yawd;
+    //meas_package.raw_measurements_(6) = yawd;
     // Update state with simulation data
     UpdateSimulator(meas_package);
     // Save measpackage for next round
@@ -329,11 +329,11 @@ Eigen::MatrixXd UKF::SigmaPointPrediction(double delta_t, Eigen::MatrixXd* Xsig_
     double yawd_p = yawd;
 
     // Add noise
-    px_p = px_p + 0.5 * pow(delta_t, 2) * cos(yaw) * nu_a;  // Add noise to px_k+1
-    py_p = py_p + 0.5 * pow(delta_t, 2) * sin(yaw) * nu_a;
-    v_p  += delta_t * nu_a;
-    yaw_p = yaw_p + 0.5*nu_yawdd*delta_t*delta_t;
-    yawd_p = yawd_p + nu_yawdd*delta_t;
+    //px_p = px_p + 0.5 * pow(delta_t, 2) * cos(yaw) * nu_a;  // Add noise to px_k+1
+    //py_p = py_p + 0.5 * pow(delta_t, 2) * sin(yaw) * nu_a;
+    //v_p  += delta_t * nu_a;
+    //yaw_p = yaw_p + 0.5*nu_yawdd*delta_t*delta_t;
+    //yawd_p = yawd_p + nu_yawdd*delta_t;
 
     //write predicted sigma points into i-th column
     Xsig_pred(0,i) = px_p;

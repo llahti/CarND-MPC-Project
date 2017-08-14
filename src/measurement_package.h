@@ -12,7 +12,7 @@ public:
     UNKNOWN,  // Can be used to indicate e.g. uninitialized measurement package
     LASER,
     RADAR,
-    MPC_PRJ_SIM   ///* raw_measurements: [px py vel_abs yaw_angle steer_angle acceleration yaw_rate]
+    MPC_PRJ_SIM   ///* raw_measurements: [px, py, vel_abs, yaw_angle, steer_angle, throttle]
   } sensor_type_;
 
   Eigen::VectorXd raw_measurements_;

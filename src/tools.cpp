@@ -5,6 +5,8 @@
 using Eigen::VectorXd;
 using Eigen::MatrixXd;
 using std::vector;
+// for convenience
+using json = nlohmann::json;
 
 Tools::Tools() {}
 
@@ -62,7 +64,7 @@ MeasurementPackage getStateFromJSON(nlohmann::json* obj) {
   std::chrono::time_point<std::chrono::high_resolution_clock> timestamp;
   timestamp = std::chrono::high_resolution_clock::now();
   // Extract data from JSON package
-  Eigen::VectorXd measurements(7);
+  VectorXd measurements(6);
   measurements.fill(0.0);
   measurements(0) = (*obj)[1]["x"];
   measurements(1) = (*obj)[1]["y"];
@@ -70,7 +72,6 @@ MeasurementPackage getStateFromJSON(nlohmann::json* obj) {
   measurements(3) = (*obj)[1]["psi"];
   measurements(4) = -(double)(*obj)[1]["steering_angle"];  // Invert steering angle (delta)
   measurements(5) = (*obj)[1]["throttle"];
-  measurements(6) = (measurements(2)/Vehicle.Lf) * measurements(4);
   // Finalize measurement pack and return it
   MeasurementPackage meas_pack = MeasurementPackage();
   meas_pack.raw_measurements_ = measurements;
@@ -93,6 +94,17 @@ vector<VectorXd> getWaypointsFromJSON(nlohmann::json* obj) {
 }
 
 
+void printState(VectorXd* x, string tag) {
+  std::cout << tag << ":"
+            << "  x=" << (*x)(0)
+            << ", y=" << (*x)(1)
+            << ", v=" << (*x)(2)
+            << ", y=" << (*x)(3)
+            << ", d=" << (*x)(4)
+            << ", t=" << (*x)(5)
+            << ", yd=" << (*x)(6);
+}
+
 vector<VectorXd> transformWaypoints(const vector<VectorXd> waypoints,
                                     const double vehicle_x, const double vehicle_y,
                                     const double yaw) {
@@ -110,4 +122,57 @@ vector<VectorXd> transformWaypoints(const vector<VectorXd> waypoints,
 
   vector<VectorXd> transformed = {wpx, wpy};
   return transformed;
+}
+
+// For converting back and forth between radians and degrees.
+constexpr double pi() { return M_PI; }
+double deg2rad(double x) { return x * pi() / 180; }
+double rad2deg(double x) { return x * 180 / pi(); }
+
+// Checks if the SocketIO event has JSON data.
+// If there is data the JSON object in string format will be returned,
+// else the empty string "" will be returned.
+string hasData(string s) {
+  auto found_null = s.find("null");
+  auto b1 = s.find_first_of("[");
+  auto b2 = s.rfind("}]");
+  if (found_null != string::npos) {
+    return "";
+  } else if (b1 != string::npos && b2 != string::npos) {
+    return s.substr(b1, b2 - b1 + 2);
+  }
+  return "";
+}
+
+// Evaluate a polynomial.
+double polyeval(VectorXd coeffs, double x) {
+  double result = 0.0;
+  for (int i = 0; i < coeffs.size(); i++) {
+    result += coeffs[i] * pow(x, i);
+  }
+  return result;
+}
+
+// Fit a polynomial.
+// Adapted from
+// https://github.com/JuliaMath/Polynomials.jl/blob/master/src/Polynomials.jl#L676-L716
+VectorXd polyfit(VectorXd xvals, VectorXd yvals,
+                        int order) {
+  assert(xvals.size() == yvals.size());
+  assert(order >= 1 && order <= xvals.size() - 1);
+  Eigen::MatrixXd A(xvals.size(), order + 1);
+
+  for (int i = 0; i < xvals.size(); i++) {
+    A(i, 0) = 1.0;
+  }
+
+  for (int j = 0; j < xvals.size(); j++) {
+    for (int i = 0; i < order; i++) {
+      A(j, i + 1) = A(j, i) * xvals(j);
+    }
+  }
+
+  auto Q = A.householderQr();
+  auto result = Q.solve(yvals);
+  return result;
 }
