@@ -9,14 +9,14 @@ using CppAD::AD;
 // Timestep length is 50ms and number of timesteps is 30
 // This makes our prediction horizon 1.5s long
 size_t N = 15;
-double dt = 0.12;
+double dt = 0.15;
 
 
 // Both the reference cross track and orientation errors are 0.
 // The reference velocity is set to 40 mph.
 double ref_cte = 0;
 double ref_epsi = 0;
-double ref_v = 20;
+double ref_v = 10;
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -62,7 +62,7 @@ class FG_eval {
       // Multiplying by N means that we are weighing more future states than the current
       //fg[0] += 1000*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
       //fg[0] += 1500*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
-      fg[0] += 200*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      fg[0] += 1000*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
       fg[0] += CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
       fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
     }
