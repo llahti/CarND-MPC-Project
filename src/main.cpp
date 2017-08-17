@@ -158,27 +158,28 @@ int main() {
           }
 
 
-          //  Get 3rd order polynomial coefficients of given waypoints
-          //auto coeffs_0 = polyfit(ptsx_transform_0, ptsy_transform_0, 3);
-
-          // Calculate cte and epsi without effect of latency
-          //double cte_0 = polyeval(coeffs_0, 0);
-          // Complete epsi equation for reference
-          // double epsi = psi - atan(coeffs[1] + 2 * px * coeffs[3] + 3 * coeffs[3] * pow(px, 2))
-          // And it gets simplified to below equation becauce px=0 and psi=0
-          //double epsi_0 = -atan(coeffs_0[1]);
-
           // Here x,y and psi are zero because state is in car's coordinate
           // system
           Eigen::VectorXd state(6);
           const double latency = timer.getAverage();
           //const double latency = 0.1;
           // Predict car position after latency time
-          const double psid = (v_0/MPC::Lf) * delta_0;  // yaw-rate
-          const double psi_1 = psid * latency;
-          double px_1 = v_0 * cos(psi_1) * latency;  // delta_0
-          double py_1 = v_0 * sin(psi_1) * latency;  // delta_0
+          const double psid = (v_0/MPC::Lf) * tan(delta_0);  // yaw-rate
+          const double psi_1 = psi_0 + psid * latency;
           const double v_1 = v_0 + a_0 * latency;
+          // Depending of psid(yaw-rate) select straight line euqation or circle equation
+          double px_1 = px_0;
+          double py_1 = py_0;
+          if (psid < 0.001) {
+            // Straight line
+            px_1 += v_0 * cos(psi_1) * latency;  // delta_0
+            py_1 += v_0 * sin(psi_1) * latency;  // delta_0
+          }
+          else {
+            // CTRV model
+            px_1 += (v_0 / psid) * ( sin(psi_0 + psid * latency) - sin(psi_0));
+            py_1 += (v_0 / psid) * (-cos(psi_0 + psid * latency) + cos(psi_0));
+          }
 
           // Convert world coordinates to car-local coordinate system
           // Rotate 90-degrees to right so that car front is pointing
@@ -186,44 +187,27 @@ int main() {
           // then we are looking for horizontallish line
           Eigen::VectorXd ptsx_transform_1(ptsx.size());
           Eigen::VectorXd ptsy_transform_1(ptsy.size());
-          const double psi = -psi_0 - 0.5*psi_1;
           for (uint i=0; i < ptsx.size(); i++) {
-              //const double shift_x = ptsx_transform_0(i) + px_1;
-              //const double shift_y = ptsy_transform_0(i) + py_1;
-              //ptsx_transform_1(i) = (shift_x*cos(-psi_1) - shift_y*sin(-psi_1));
-              //ptsy_transform_1(i) = (shift_x*sin(-psi_1) + shift_y*cos(-psi_1));
-              //ptsx_transform_1(i) = ptsx_transform_0(i) + px_1;
-              //ptsy_transform_1(i) = ptsy_transform_0(i) + py_1;
-              const double shift_x = ptsx[i] - (px_0 + px_1);
-              const double shift_y = ptsy[i] - (py_0 + py_1);
-              ptsx_transform_1(i) = (shift_x*cos(psi) - shift_y*sin(psi));  // TODO: Need a good way to predict angle
-              ptsy_transform_1(i) = (shift_x*sin(psi) + shift_y*cos(psi));
+              const double shift_x = ptsx[i] - (px_1);
+              const double shift_y = ptsy[i] - (py_1);
+              ptsx_transform_1(i) = (shift_x*cos(-psi_1) - shift_y*sin(-psi_1));
+              ptsy_transform_1(i) = (shift_x*sin(-psi_1) + shift_y*cos(-psi_1));
           }
 
           //  Get 3rd order polynomial coefficients of given waypoints
           auto coeffs_1 = polyfit(ptsx_transform_1, ptsy_transform_1, 3);
           double cte_1 = polyeval(coeffs_1, 0);
           double epsi_1 = -atan(coeffs_1[1]);
-          //const double epsi_1 = epsi_0 + psid * latency;
-          //const double cte_1 = cte_0 + v_0 * sin(epsi_0) * latency;
 
 
-          // Try out new formula
-          if (psid > 0.0001) {
-            //const double px_1_new = px_0+ (v_0/psid)*(sin(psid * latency));
-            //const double py_1_new = py_0 + (v_0/psid)*(1 - cos(psid * latency));
-            //std::cout << "px1=" << px_1 << " px1_new=" << px_1_new-px_0 << std::endl;
-            //std::cout << "py1=" << py_1 << " py1_new=" << py_1_new-py_0 << std::endl;
-
-            //px_1 = px_1_new-px_0;
-            //py_1 = py_1_new-py_0;
-          }
-          state << px_1, py_1, psi_1, v_1, cte_1, epsi_1;
-
-          std::cout << "psi0=" << psi_0 << " psi_1=" << psi_1 << " psid=" << psid << std::endl;
+          std::cout << "psi0= " << psi_0 << ",  psi_1= " << psi_1 << ",  psid=" << psid << std::endl;
+          std::cout << "px_0= " << px_0 << ",  px_1= " << px_1 << std::endl;
+          std::cout << "py_0= " << py_0 << ",  py_1= " << py_1 << std::endl;
 
 
-
+          // State vector for MPC
+          // px, py and psi are 0 because latency is already compensated in coeffs_1
+          state << 0, 0, 0, v_1, cte_1, epsi_1;
 
           // Solve steering angle, throttle and predicted trajectory
           auto vars = mpc.Solve(state, coeffs_1);
