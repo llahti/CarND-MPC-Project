@@ -8,15 +8,15 @@ using CppAD::AD;
 // Set the timestep length and duration.
 // Timestep length is 50ms and number of timesteps is 30
 // This makes our prediction horizon 1.5s long
-size_t N = 20;
-double dt = 0.05;
+size_t N = 15;
+double dt = 0.06;
 
 
 // Both the reference cross track and orientation errors are 0.
 // The reference velocity is set to 40 mph.
 double ref_cte = 0;
 double ref_epsi = 0;
-double ref_v = 20;
+double ref_v = 30;
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -59,10 +59,13 @@ class FG_eval {
     // are important to keep close to 0.
     // TODO: Describe more in details
     for (uint t = 0; t < N; t++) {
-      fg[0] += 100*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
-      fg[0] += 500*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
-      fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
-
+      //fg[0] += 200*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      fg[0] += 10*t*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      //fg[0] += 1000*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
+      fg[0] += 1000*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
+      fg[0] += 5*CppAD::pow(vars[v_start + t] - ref_v, 2);
+      // Penalize high speed with high steering angle
+      fg[0] += 0.1*CppAD::pow(vars[v_start + t] * vars[delta_start + t], 2);
     }
 
     // Starting from step 2
@@ -83,8 +86,6 @@ class FG_eval {
     for (uint t = 0; t < N - 2; t++) {
       fg[0] += 500*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);  // Try 200
       fg[0] += 10*CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);  // try 10
-      // Penalize high speed with high steering angle
-      //fg[0] += 0.2*CppAD::pow(vars[v_start + t + 2] * vars[delta_start + t + 2], 2);
     }
 
     //
