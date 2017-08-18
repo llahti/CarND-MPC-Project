@@ -161,10 +161,16 @@ int main() {
           // Here x,y and psi are zero because state is in car's coordinate
           // system
           Eigen::VectorXd state(6);
-          const double latency = timer.getAverage();
+          // Use static_latency to finetune latency. Especially in high speeds it's helpful
+          const double static_latency = 0.25;
+          const double latency = timer.getAverage() + static_latency;
+          std::cout << "Latency compensation = " << latency << std::endl;
           //const double latency = 0.1;
+          //
           // Predict car position after latency time
-          const double psid = (v_0/MPC::Lf) * tan(delta_0);  // yaw-rate
+          //
+          // yaw-rate, need to compensate because car won't react to steering angle changes ideally.
+          const double psid = (v_0/MPC::Lf) * tan(delta_0) * 0.5;
           const double psi_1 = psi_0 + psid * latency;
           const double v_1 = v_0 + a_0 * latency;
           // Depending of psid(yaw-rate) select straight line euqation or circle equation
