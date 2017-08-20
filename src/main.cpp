@@ -157,16 +157,17 @@ int main() {
 
 
           // Use static_latency to finetune latency. Especially in high speeds it's helpful
-          const double static_latency = 0.2;
+          const double static_latency = 0.0;
           const double latency = timer.getAverage() + static_latency;
 
           //
           // Predict car position after latency time
           //
           // yaw-rate, need to compensate because car won't react to steering angle changes ideally.
-          const double psid_1 = (0.3 * (v_0/MPC::Lf) * tan(delta_0)) + (0.7 * psid_0);
+          const double f_steer = MPC::ds / (MPC::ds/MPC::ds_min + pow(v_0, 2));
+          const double psid_1 = (1-f_steer)*psid_0 + f_steer*(v_0/MPC::Lf)*tan(delta_0);
           //const double psid_1 = psid_0;
-          std::cout << "psid_0=" << psid_0 << std::endl;
+          std::cout << "psid_1=" << psid_1 << std::endl;
           const double psi_1 = psi_0 + psid_1 * latency;
           const double v_1 = v_0 + a_0 * latency;
           // Depending of psid(yaw-rate) select straight line euqation or circle equation
@@ -204,8 +205,8 @@ int main() {
 
           // State vector for MPC
           // px, py and psi are 0 because latency is already compensated in coeffs_1
-          Eigen::VectorXd state(6);
-          state << 0, 0, 0, v_1, cte_1, epsi_1;
+          Eigen::VectorXd state(MPC::n_x_);
+          state << 0, 0, 0, psid_1, v_1, cte_1, epsi_1;
 
           // Solve steering angle, throttle and predicted trajectory
           auto vars = mpc.Solve(state, coeffs_1);

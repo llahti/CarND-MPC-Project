@@ -13,7 +13,7 @@ const double dt = 0.067;
 // Look-ahead time is for predicting first point later in future
 // and that way making predictions to take more into account vehicle dynamics.
 // I.E. you need to turn wheels just before the turn in order not to be late
-const double lh = 0.3; // Look-ahead time
+const double lh = 0.1; // Look-ahead time
 double dyndt;  // dynamic dt to account look-ahead
 
 
@@ -21,7 +21,7 @@ double dyndt;  // dynamic dt to account look-ahead
 // The reference velocity is set to 40 mph.
 double ref_cte = 0;
 double ref_epsi = 0;
-double ref_v = 40;
+double ref_v = 80;
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -29,7 +29,8 @@ double ref_v = 40;
 size_t x_start = 0;
 size_t y_start = x_start + N;
 size_t psi_start = y_start + N;
-size_t v_start = psi_start + N;
+size_t psid_start = psi_start + N;
+size_t v_start = psid_start + N;
 size_t cte_start = v_start + N;
 size_t epsi_start = cte_start + N;
 size_t delta_start = epsi_start + N;
@@ -64,15 +65,15 @@ class FG_eval {
     // are important to keep close to 0.
     // TODO: Describe more in details
     for (uint t = 0; t < N-1; t++) {
-      fg[0] += 300*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
-      fg[0] += 30*(t+1)*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      fg[0] += 50*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      fg[0] += 100*(t+1)*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
       //fg[0] += 500*     CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
 
-      //fg[0] += 500*     CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
-      fg[0] += 200*1/(t+1)*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
+      fg[0] += 50*     CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
+      fg[0] += 1200*1/(t+1)*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
       fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
       // Penalize high speed with high steering angle
-      fg[0] += 70*CppAD::pow(vars[v_start + t] * vars[delta_start + t], 2);
+      fg[0] += 30*CppAD::pow(vars[v_start + t] * vars[delta_start + t], 2);
     }
 
 
@@ -88,7 +89,7 @@ class FG_eval {
     // Minimize the value gap between sequential actuations.
     // TODO: Describe more in details
     for (uint t = 0; t < N - 2; t++) {
-      fg[0] += 200*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);  // Try 200
+      fg[0] += 20*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);  // Try 200
       fg[0] += 10*CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);  // try 10
     }
 
@@ -105,6 +106,7 @@ class FG_eval {
     fg[1 + x_start] = vars[x_start];
     fg[1 + y_start] = vars[y_start];
     fg[1 + psi_start] = vars[psi_start];
+    fg[1 + psid_start] = vars[psid_start];
     fg[1 + v_start] = vars[v_start];
     fg[1 + cte_start] = vars[cte_start];
     fg[1 + epsi_start] = vars[epsi_start];
@@ -115,17 +117,19 @@ class FG_eval {
       AD<double> x1 =    vars[x_start    + t +1];
       AD<double> y1 =    vars[y_start    + t +1];
       AD<double> psi1 =  vars[psi_start  + t +1];
+      AD<double> psid1 =  vars[psid_start  + t +1];
       AD<double> v1 =    vars[v_start    + t +1];
       AD<double> cte1 =  vars[cte_start  + t +1];
       AD<double> epsi1 = vars[epsi_start + t +1];
 
       // The state at time t.
-      AD<double> x0 =    vars[x_start    + t];
-      AD<double> y0 =    vars[y_start    + t];
-      AD<double> psi0 =  vars[psi_start  + t];
-      AD<double> v0 =    vars[v_start    + t];
-      AD<double> cte0 =  vars[cte_start  + t];
-      AD<double> epsi0 = vars[epsi_start + t];
+      AD<double> x0 =     vars[x_start    + t];
+      AD<double> y0 =     vars[y_start    + t];
+      AD<double> psi0 =   vars[psi_start  + t];
+      AD<double> psid0 =  vars[psid_start  + t];
+      AD<double> v0 =     vars[v_start    + t];
+      AD<double> cte0 =   vars[cte_start  + t];
+      AD<double> epsi0 =  vars[epsi_start + t];
 
       // Only consider the actuation at time t.
       AD<double> delta0 = vars[delta_start + t];
@@ -136,7 +140,7 @@ class FG_eval {
 
       // (v_0/MPC::Lf) * tan(delta_0)
       // psi-rate or in other words( yaw-rate )
-      AD<double> psid0 = (v0 / MPC::Lf) * CppAD::tan(delta0);
+      //AD<double> psid0 = (v0 / MPC::Lf) * CppAD::tan(delta0);
 
 
       // Here's `x` to get you started.
@@ -154,6 +158,13 @@ class FG_eval {
       // first iteration is with look-ahead
       if (t == 0) {dyndt = lh + dt;}
       else {dyndt = dt; }
+
+      //const double ds = 1000;
+      //const double f_steer = ds / pow(v, 2);
+      //const double psid_1 = (1-f_steer)*psid_0 + f_steer*(v_0/MPC::Lf)*tan(delta_0);
+
+      AD<double> f_steer = MPC::ds / (MPC::ds/MPC::ds_min + CppAD::pow(v0, 2));
+      fg[2 + psid_start   + t] = psid1  - ((1 - f_steer) * psid0 + f_steer * (v0 / MPC::Lf) * CppAD::tan(delta0));
 
       if (psid0 > 0.0001) {
         // CTRV model
@@ -218,17 +229,18 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   double x = state[0];
   double y = state[1];
   double psi = state[2];
-  double v = state[3];
-  double cte = state[4];
-  double epsi = state[5];
+  double psid = state[3];
+  double v = state[4];
+  double cte = state[5];
+  double epsi = state[6];
 
   // Set the number of model variables (includes both states and inputs).
   // For example: If the state is a 4 element vector, the actuators is a 2
   // element vector and there are 10 timesteps. The number of variables is:
 
   // Number of state and actuator variables
-  const unsigned int n_state_vars = 6;
-  const unsigned int n_actuator_vars = 2;
+  const unsigned int n_state_vars = MPC::n_x_;
+  const unsigned int n_actuator_vars = MPC::n_u_;
 
   // number of independent variables
   // N timesteps == N - 1 actuations
@@ -268,7 +280,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   }
 
 
-  // Acceleration/decceleration upper and lower limits.
+  // Acceleration/deceleration upper and lower limits.
   // NOTE: Feel free to change this to something else.
   for (uint i = a_start; i < n_vars; i++) {
     vars_lowerbound[i] = -1.0;
@@ -289,6 +301,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   constraints_lowerbound[x_start] = x;
   constraints_lowerbound[y_start] = y;
   constraints_lowerbound[psi_start] = psi;
+  constraints_lowerbound[psid_start] = psid;
   constraints_lowerbound[v_start] = v;
   constraints_lowerbound[cte_start] = cte;
   constraints_lowerbound[epsi_start] = epsi;
@@ -296,6 +309,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   constraints_upperbound[x_start] = x;
   constraints_upperbound[y_start] = y;
   constraints_upperbound[psi_start] = psi;
+  constraints_upperbound[psid_start] = psid;
   constraints_upperbound[v_start] = v;
   constraints_upperbound[cte_start] = cte;
   constraints_upperbound[epsi_start] = epsi;

@@ -25,6 +25,17 @@ class MPC {
   // This is the length from front to CoG(Center of Gravity) that has a similar radius.
   static constexpr double Lf = 2.67;
 
+  // Length of state vector
+  static constexpr size_t n_x_= 7;
+  static constexpr size_t n_u_= 2;
+
+  // Coefficient to define how much steering is affected by yaw-rate
+  // and how much by steering angle
+  static constexpr double ds = 1000;  // Sensitivity
+  // defines maximum portion from steering angle based prediction
+  // This is needed when speed is close to zero.
+  static constexpr double ds_min = 0.7;
+
   MPC();
 
   virtual ~MPC();
@@ -37,10 +48,11 @@ class MPC {
    * @param state vector of current state of the vehicle. This vector contains following elements.
    *         [0] X-position
    *         [1] Y-position
-   *         [2] psi orientation
-   *         [3] velocity
-   *         [4] cte (Cross Track Error)
-   *         [5] epsi (Error in steering angle)
+   *         [2] psi yaw
+   *         [3] psid yaw-rate
+   *         [4] velocity
+   *         [5] cte (Cross Track Error)
+   *         [6] epsi (Error in steering angle)
    * @param coeffs coefficients of polynomial of waypoints to be followed
    * @return
    */
