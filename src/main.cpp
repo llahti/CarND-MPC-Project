@@ -155,28 +155,15 @@ int main() {
           a_0 = meas_delta(3);
           meas_previous = meas_this;
 
-          // Convert world coordinates to car-local coordinate system
-          // Rotate 90-degrees to right so that car front is pointing
-          // along x-axis --> This makes polynomial fit easier because
-          // then we are looking for horizontallish line
-          /*
-          Eigen::VectorXd ptsx_transform_0(ptsx.size());
-          Eigen::VectorXd ptsy_transform_0(ptsy.size());
-          for (uint i=0; i < ptsx.size(); i++) {
-              const double shift_x = ptsx[i] - px_0;
-              const double shift_y = ptsy[i] - py_0;
-              ptsx_transform_0(i) = (shift_x*cos(-psi_0) - shift_y*sin(-psi_0));
-              ptsy_transform_0(i) = (shift_x*sin(-psi_0) + shift_y*cos(-psi_0));
-          }*/
 
 
           // Here x,y and psi are zero because state is in car's coordinate
           // system
-          Eigen::VectorXd state(6);
+
           // Use static_latency to finetune latency. Especially in high speeds it's helpful
           const double static_latency = 0.2;
           const double latency = timer.getAverage() + static_latency;
-          std::cout << "Latency compensation = " << latency << std::endl;
+
           //
           // Predict car position after latency time
           //
@@ -226,6 +213,7 @@ int main() {
 
           // State vector for MPC
           // px, py and psi are 0 because latency is already compensated in coeffs_1
+          Eigen::VectorXd state(6);
           state << 0, 0, 0, v_1, cte_1, epsi_1;
 
           // Solve steering angle, throttle and predicted trajectory
