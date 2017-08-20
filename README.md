@@ -1,6 +1,41 @@
 # CarND-Controls-MPC
 Self-Driving Car Engineer Nanodegree Program
 
+## Introduction
+
+In this project I’ll implement Model Predictive Control to drive a vehicle around the race track in simulator. Project has challenge as there is 100ms delay to send commands to simulator so there need to be a  way to handle latency in order to car drive safely on road.
+
+## Vehicle State
+
+Vehicle state is presented by a simple kinematics which models vehicle position, orientation and speed. It is  presented by following  vehicle state vector.
+
+![Vehicle State](./illustrations/vehicle_state.jpg)
+
+Where
+x = horizontal position 
+y = vertical position 
+ψ= orientation (psi, yaw, heading)
+v = speed (absolute velocity)
+
+Control inputs can be presented by steering angle and combined value for throttle and brake. Positive throttle values are accelerating vehicle and negative values are decelerating vehicle.
+
+![Vehicle Controls](./illustrations/vehicle_controls.jpg)
+
+where
+
+δ = steering angle
+a = acceleration
+
+
+## Kinematic Model
+Simple way to model vehicle is to use so called bicycle model. When vehicle’s yaw-rate is close to zero vehicle’s position in future can be calculated by following equations
+
+![Bicycle Model](./illustrations/bicycle_model.jpg)
+
+Where
+t+1 = future state
+Lf = distance from front axle to center of gravity
+
 ---
 
 ## Dependencies
