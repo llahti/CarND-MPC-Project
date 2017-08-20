@@ -8,15 +8,17 @@ using CppAD::AD;
 // Set the timestep length and duration.
 // Timestep length is 50ms and number of timesteps is 30
 // This makes our prediction horizon 1.5s long
-size_t N = 15;
-double dt = 0.06;
+size_t N = 17;
+const double dt = 0.067;
+const double lh = 0.3; // Look-ahead time
+double dyndt;  // dynamic dt to account look-ahead
 
 
 // Both the reference cross track and orientation errors are 0.
 // The reference velocity is set to 40 mph.
 double ref_cte = 0;
 double ref_epsi = 0;
-double ref_v = 45;
+double ref_v = 40;
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -59,22 +61,17 @@ class FG_eval {
     // are important to keep close to 0.
     // TODO: Describe more in details
     for (uint t = 0; t < N-1; t++) {
-      fg[0] += 100*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
-      fg[0] += 20*(t+1)*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
-      //fg[0] += 1000*     CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      fg[0] += 300*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      fg[0] += 30*(t+1)*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      //fg[0] += 500*     CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
 
-      fg[0] += 500*     CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
-      fg[0] += 2000*1/(t+1)*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
+      //fg[0] += 500*     CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
+      fg[0] += 200*1/(t+1)*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
       fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
       // Penalize high speed with high steering angle
-      fg[0] += 50*CppAD::pow(vars[v_start + t] * vars[delta_start + t], 2);
+      fg[0] += 70*CppAD::pow(vars[v_start + t] * vars[delta_start + t], 2);
     }
 
-    // Starting from step 2
-    for (uint t = 2; t < N-1; t++) {
-      //fg[0] += 1800*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
-      //fg[0] += 900*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
-    }
 
     // Minimize the use of actuators.
     // TODO: Describe more in details
@@ -88,7 +85,7 @@ class FG_eval {
     // Minimize the value gap between sequential actuations.
     // TODO: Describe more in details
     for (uint t = 0; t < N - 2; t++) {
-      fg[0] += 100*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);  // Try 200
+      fg[0] += 200*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);  // Try 200
       fg[0] += 10*CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);  // try 10
     }
 
@@ -149,15 +146,29 @@ class FG_eval {
       // v_[t+1] = v[t] + a[t] * dt
       // cte[t+1] = f(x[t]) - y[t] + v[t] * sin(epsi[t]) * dt
       // epsi[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
-      fg[2 + x_start   + t] = x1   - (x0 + v0 * CppAD::cos(psi0) * dt);
-      fg[2 + y_start   + t] = y1   - (y0 + v0 * CppAD::sin(psi0) * dt);
-      fg[2 + psi_start + t] = psi1 - (psi0 + psid0 * dt);
-      fg[2 + v_start   + t] = v1   - (v0 + a0 * dt);
+      // More accurate model for high yaw-rate
+
+      // first iteration is with look-ahead
+      if (t == 0) {dyndt = lh + dt;}
+      else {dyndt = dt; }
+
+      if (psid0 > 0.0001) {
+        // CTRV model
+        fg[2 + x_start   + t] = x1   - (x0 + v0/psid0 * ( CppAD::sin(psi0 + psid0 * dyndt) - CppAD::sin(psi0)));
+        fg[2 + y_start   + t] = y1   - (y0 + v0/psid0 * (-CppAD::cos(psi0 + psid0 * dyndt) + CppAD::cos(psi0)));
+      }
+      else {
+        // Straight line model
+        fg[2 + x_start   + t] = x1   - (x0 + v0 * CppAD::cos(psi0) * dyndt);
+        fg[2 + y_start   + t] = y1   - (y0 + v0 * CppAD::sin(psi0) * dyndt);
+      }
+      fg[2 + psi_start + t] = psi1 - (psi0 + psid0 * dyndt);
+      fg[2 + v_start   + t] = v1   - (v0 + a0 * dyndt);
       fg[2 + cte_start + t] =
-          cte1 - ((f0 - y0) + (v0 * CppAD::sin(epsi0) * dt));
+          cte1 - ((f0 - y0) + (v0 * CppAD::sin(epsi0) * dyndt));
       // TODO: Check the correct equation for epsi1
       fg[2 + epsi_start + t] =
-          epsi1 - ((psi0 - psides0) + psid0 * dt);
+          epsi1 - ((psi0 - psides0) + psid0 * dyndt);
           //epsi1 - ((psi0 - psides0) - v0 * delta0 / MPC::Lf * dt);
     }
   }
@@ -245,11 +256,12 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   // degrees (values in radians).
   // NOTE: Feel free to change this to something else.
   // TODO: Check what is function of multiplying by Lf
+
   for (uint i = delta_start; i < a_start; i++) {
     //vars_lowerbound[i] = -0.436332 * Lf;
     //vars_upperbound[i] = 0.436332 * Lf;
-    vars_lowerbound[i] = -0.2 * Lf;
-    vars_upperbound[i] = 0.2 * Lf;
+    vars_lowerbound[i] = -0.25 * Lf;
+    vars_upperbound[i] = 0.25 * Lf;
   }
 
 

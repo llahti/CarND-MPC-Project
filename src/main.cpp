@@ -116,8 +116,9 @@ int main() {
 
   // MPC is initialized here!
   MPC mpc;
+  Eigen::VectorXd meas_previous = Eigen::VectorXd::Zero(6);
 
-  h.onMessage([&mpc, &timer](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&mpc, &timer, &meas_previous](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     timer.Start();
     // "42" at the start of the message means there's a websocket message event.
@@ -138,16 +139,27 @@ int main() {
           const double psi_0 = j[1]["psi"];
           const double v_0 = 0.44704 *(double)j[1]["speed"]; // convert mph to meters/second
           const double delta_0 = -(double)j[1]["steering_angle"];  // Invert steering angle (delta)
-          const double a_0 = j[1]["throttle"];
+          double a_0 = j[1]["throttle"];
           // Get xy way points from simulator
           vector<double> ptsx = j[1]["ptsx"];
           vector<double> ptsy = j[1]["ptsy"];
 
+          // Calculate psid and acceleration by using previous measurements
+          // Vector px, py, psi, v, delta, a
+          Eigen::VectorXd meas_this(6);
+          meas_this << px_0, py_0, psi_0, v_0, delta_0, a_0;
+          Eigen::VectorXd meas_delta = meas_this - meas_previous;
+          // angle needs special attention because of the jump from 2 * PI to 0
+          meas_delta(2) = atan2(sin(meas_this(2) - meas_previous(2)), cos(meas_this(2) - meas_previous(2)));
+          const double psid_0 = meas_delta(2);
+          a_0 = meas_delta(3);
+          meas_previous = meas_this;
 
           // Convert world coordinates to car-local coordinate system
           // Rotate 90-degrees to right so that car front is pointing
           // along x-axis --> This makes polynomial fit easier because
           // then we are looking for horizontallish line
+          /*
           Eigen::VectorXd ptsx_transform_0(ptsx.size());
           Eigen::VectorXd ptsy_transform_0(ptsy.size());
           for (uint i=0; i < ptsx.size(); i++) {
@@ -155,36 +167,37 @@ int main() {
               const double shift_y = ptsy[i] - py_0;
               ptsx_transform_0(i) = (shift_x*cos(-psi_0) - shift_y*sin(-psi_0));
               ptsy_transform_0(i) = (shift_x*sin(-psi_0) + shift_y*cos(-psi_0));
-          }
+          }*/
 
 
           // Here x,y and psi are zero because state is in car's coordinate
           // system
           Eigen::VectorXd state(6);
           // Use static_latency to finetune latency. Especially in high speeds it's helpful
-          const double static_latency = 0.25;
+          const double static_latency = 0.2;
           const double latency = timer.getAverage() + static_latency;
           std::cout << "Latency compensation = " << latency << std::endl;
-          //const double latency = 0.1;
           //
           // Predict car position after latency time
           //
           // yaw-rate, need to compensate because car won't react to steering angle changes ideally.
-          const double psid = (v_0/MPC::Lf) * tan(delta_0) * 0.5;
-          const double psi_1 = psi_0 + psid * latency;
+          const double psid_1 = (0.3 * (v_0/MPC::Lf) * tan(delta_0)) + (0.7 * psid_0);
+          //const double psid_1 = psid_0;
+          std::cout << "psid_0=" << psid_0 << std::endl;
+          const double psi_1 = psi_0 + psid_1 * latency;
           const double v_1 = v_0 + a_0 * latency;
           // Depending of psid(yaw-rate) select straight line euqation or circle equation
           double px_1 = px_0;
           double py_1 = py_0;
-          if (psid < 0.001) {
-            // Straight line
-            px_1 += v_0 * cos(psi_1) * latency;  // delta_0
-            py_1 += v_0 * sin(psi_1) * latency;  // delta_0
+          if (psid_1 < 0.001) {
+            // Straight line model
+            px_1 += v_0 * cos(psi_1) * latency;
+            py_1 += v_0 * sin(psi_1) * latency;
           }
           else {
             // CTRV model
-            px_1 += (v_0 / psid) * ( sin(psi_0 + psid * latency) - sin(psi_0));
-            py_1 += (v_0 / psid) * (-cos(psi_0 + psid * latency) + cos(psi_0));
+            px_1 += (v_0 / psid_1) * ( sin(psi_0 + psid_1 * latency) - sin(psi_0));
+            py_1 += (v_0 / psid_1) * (-cos(psi_0 + psid_1 * latency) + cos(psi_0));
           }
 
           // Convert world coordinates to car-local coordinate system
@@ -194,8 +207,8 @@ int main() {
           Eigen::VectorXd ptsx_transform_1(ptsx.size());
           Eigen::VectorXd ptsy_transform_1(ptsy.size());
           for (uint i=0; i < ptsx.size(); i++) {
-              const double shift_x = ptsx[i] - (px_1);
-              const double shift_y = ptsy[i] - (py_1);
+              const double shift_x = ptsx[i] - px_1;
+              const double shift_y = ptsy[i] - py_1;
               ptsx_transform_1(i) = (shift_x*cos(-psi_1) - shift_y*sin(-psi_1));
               ptsy_transform_1(i) = (shift_x*sin(-psi_1) + shift_y*cos(-psi_1));
           }
@@ -206,7 +219,7 @@ int main() {
           double epsi_1 = -atan(coeffs_1[1]);
 
 
-          std::cout << "psi0= " << psi_0 << ",  psi_1= " << psi_1 << ",  psid=" << psid << std::endl;
+          std::cout << "psi0= " << psi_0 << ",  psi_1= " << psi_1 << ",  psid=" << psid_1 << std::endl;
           std::cout << "px_0= " << px_0 << ",  px_1= " << px_1 << std::endl;
           std::cout << "py_0= " << py_0 << ",  py_1= " << py_1 << std::endl;
 
@@ -247,6 +260,7 @@ int main() {
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
+          //msgJson["steering_angle"] = -vars[0]/(deg2rad(25)*MPC::Lf);
           msgJson["steering_angle"] = -vars[0]/(deg2rad(25)*MPC::Lf);
           msgJson["throttle"] = vars[1];
 
