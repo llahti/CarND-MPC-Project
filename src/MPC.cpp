@@ -6,10 +6,13 @@
 using CppAD::AD;
 
 // Set the timestep length and duration.
-// Timestep length is 50ms and number of timesteps is 30
-// This makes our prediction horizon 1.5s long
+// Timestep length is 67ms and number of timesteps is 17
+// This makes our prediction horizon 1.14s long
 size_t N = 17;
 const double dt = 0.067;
+// Look-ahead time is for predicting first point later in future
+// and that way making predictions to take more into account vehicle dynamics.
+// I.E. you need to turn wheels just before the turn in order not to be late
 const double lh = 0.3; // Look-ahead time
 double dyndt;  // dynamic dt to account look-ahead
 
@@ -52,7 +55,7 @@ class FG_eval {
     // NOTE: You'll probably go back and forth between this function and
     // the Solver function below.
 
-    // The cost is stored is the first element of `fg`.
+    // The cost is stored in the first element of `fg`.
     // Any additions to the cost should be added to `fg[0]`.
     fg[0] = 0;
 

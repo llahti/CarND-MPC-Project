@@ -156,10 +156,6 @@ int main() {
           meas_previous = meas_this;
 
 
-
-          // Here x,y and psi are zero because state is in car's coordinate
-          // system
-
           // Use static_latency to finetune latency. Especially in high speeds it's helpful
           const double static_latency = 0.2;
           const double latency = timer.getAverage() + static_latency;
@@ -204,11 +200,6 @@ int main() {
           auto coeffs_1 = polyfit(ptsx_transform_1, ptsy_transform_1, 3);
           double cte_1 = polyeval(coeffs_1, 0);
           double epsi_1 = -atan(coeffs_1[1]);
-
-
-          std::cout << "psi0= " << psi_0 << ",  psi_1= " << psi_1 << ",  psid=" << psid_1 << std::endl;
-          std::cout << "px_0= " << px_0 << ",  px_1= " << px_1 << std::endl;
-          std::cout << "py_0= " << py_0 << ",  py_1= " << py_1 << std::endl;
 
 
           // State vector for MPC
