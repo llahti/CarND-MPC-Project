@@ -177,7 +177,7 @@ int main() {
           // yaw-rate, need to compensate because car won't react to steering angle changes ideally.
           const double f_steer = MPC::ds / (MPC::ds/MPC::ds_min + pow(v_0, 2));
           const double psid_1_pred_delta = (v_0/MPC::Lf)*tan(delta_0);
-          const double psid_1 = (1-f_steer)*psid_0*0.5 + f_steer*psid_1_pred_delta;
+          const double psid_1 = (1-f_steer)*psid_0*0.55 + f_steer*psid_1_pred_delta;
           const double psi_1 = psi_0 + psid_1 * latency;
           const double v_1 = v_0 + a_0 * latency;
           // Depending of psid(yaw-rate) select straight line euqation or circle equation
@@ -251,8 +251,8 @@ int main() {
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
-          //msgJson["steering_angle"] = -vars[0]/(deg2rad(25)*MPC::Lf);
-          const double delta_1 = -vars[0]/(deg2rad(25)*MPC::Lf);
+          // 0.75 is damping factor. It is very useful in high speeds to reduce oscillations.
+          const double delta_1 = -vars[0]/(deg2rad(25)*MPC::Lf) * 0.70;
           msgJson["steering_angle"] = delta_1;
           msgJson["throttle"] = vars[1];
 
@@ -284,12 +284,10 @@ int main() {
           // SUBMITTING.
           this_thread::sleep_for(chrono::milliseconds(100));
           double lat = timer.Stop();
-          //std::cout << "Latency: loop=" << lat << " Avg=" << timer.getAverage() << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
 
-          // duration_cast< milliseconds >(
-          // system_clock::now().time_since_epoch()
-          std::cout << " delta_t=" << delta_t << " loop_latency=" << lat << std::endl;
+          // DEBUG OUTPUT
+          std::cout << "delta_t=" << delta_t << " loop_latency=" << lat << std::endl;
           std::cout << "\tpx_0=" << px_0 << " py_0=" << py_0
                     << " psi_0=" << psi_0 << " psid_0=" << psid_0
                     << " v_0=" << v_0

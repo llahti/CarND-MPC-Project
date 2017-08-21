@@ -23,7 +23,7 @@ double dyndt;  // dynamic dt to account look-ahead
 // The reference velocity is set to 40 mph.
 double ref_cte = 0;
 double ref_epsi = 0;
-double ref_v = 80;
+double ref_v = 40;
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -68,15 +68,17 @@ class FG_eval {
     // TODO: Describe more in details
     for (uint t = 0; t < N-1; t++) {
       // Penalize cte and give higher value to future cte
-      fg[0] += 200*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      fg[0] += 20*CppAD::pow(vars[cte_start + t] - ref_cte, 4);  // Try 2000 as multiplier
       fg[0] += 70*(t+1)*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
       // Penalize epsi and give higher value to instantanous values
-      fg[0] += 150*     CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
+      fg[0] += 100*     CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
       fg[0] += 50*1/(t+1)*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
       // deviation from reference speed need to be penalized, because otherwise car wouldn't move
+      // Keep penalty for not meeting reference speed small because otherwise it'll
+      // mask cost of more important parameters such like cte or epsi.
       fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
       // Penalize high speed with high steering angle
-      fg[0] += CppAD::pow(vars[v_start + t] * vars[delta_start + t], 2);
+      //fg[0] += CppAD::pow(vars[v_start + t] * vars[delta_start + t], 2);
     }
 
 
@@ -86,13 +88,13 @@ class FG_eval {
       fg[0] += 5*CppAD::pow(vars[delta_start + t], 2);  // try 5 as a multiplier
       fg[0] += 5*CppAD::pow(vars[a_start + t], 2);  // try 5 as a multiplier
       // Limit steering usage more on high speeds
-      fg[0] += 10*CppAD::pow(vars[delta_start + t] * vars[v_start + t], 2);
+      fg[0] += 5*CppAD::pow(vars[delta_start + t] * vars[v_start + t], 2);
     }
 
     // Minimize the value gap between sequential actuations.
     // TODO: Describe more in details
     for (uint t = 0; t < N - 2; t++) {
-      fg[0] += 1000*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);  // Try 200
+      fg[0] += 500*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);  // Try 200
       fg[0] += 10*CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);  // try 10
     }
 
@@ -278,7 +280,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   // Acceleration/deceleration upper and lower limits.
   // NOTE: Feel free to change this to something else.
   for (uint i = a_start; i < n_vars; i++) {
-    vars_lowerbound[i] = -1.0;
+    vars_lowerbound[i] = -0.8;
     vars_upperbound[i] = 1.0;
   }
 
