@@ -8,12 +8,14 @@ using CppAD::AD;
 // Set the timestep length and duration.
 // Timestep length is 67ms and number of timesteps is 17
 // This makes our prediction horizon 1.14s long
-size_t N = 17;
-const double dt = 0.067;
+//size_t N = 17;
+//const double dt = 0.067;
+size_t N = 12;
+const double dt = 0.1;
 // Look-ahead time is for predicting first point later in future
 // and that way making predictions to take more into account vehicle dynamics.
 // I.E. you need to turn wheels just before the turn in order not to be late
-const double lh = 0.1; // Look-ahead time
+const double lh = 0.0; // Look-ahead time
 double dyndt;  // dynamic dt to account look-ahead
 
 
@@ -65,15 +67,16 @@ class FG_eval {
     // are important to keep close to 0.
     // TODO: Describe more in details
     for (uint t = 0; t < N-1; t++) {
-      fg[0] += 50*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
-      fg[0] += 100*(t+1)*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
-      //fg[0] += 500*     CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
-
-      fg[0] += 50*     CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
-      fg[0] += 1200*1/(t+1)*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
+      // Penalize cte and give higher value to future cte
+      fg[0] += 200*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      fg[0] += 70*(t+1)*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      // Penalize epsi and give higher value to instantanous values
+      fg[0] += 150*     CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
+      fg[0] += 50*1/(t+1)*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
+      // deviation from reference speed need to be penalized, because otherwise car wouldn't move
       fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
       // Penalize high speed with high steering angle
-      fg[0] += 30*CppAD::pow(vars[v_start + t] * vars[delta_start + t], 2);
+      fg[0] += CppAD::pow(vars[v_start + t] * vars[delta_start + t], 2);
     }
 
 
@@ -83,13 +86,13 @@ class FG_eval {
       fg[0] += 5*CppAD::pow(vars[delta_start + t], 2);  // try 5 as a multiplier
       fg[0] += 5*CppAD::pow(vars[a_start + t], 2);  // try 5 as a multiplier
       // Limit steering usage more on high speeds
-      fg[0] += 5*CppAD::pow(vars[delta_start + t] * vars[v_start + t], 2);
+      fg[0] += 10*CppAD::pow(vars[delta_start + t] * vars[v_start + t], 2);
     }
 
     // Minimize the value gap between sequential actuations.
     // TODO: Describe more in details
     for (uint t = 0; t < N - 2; t++) {
-      fg[0] += 20*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);  // Try 200
+      fg[0] += 1000*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);  // Try 200
       fg[0] += 10*CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);  // try 10
     }
 
@@ -138,10 +141,6 @@ class FG_eval {
       AD<double> f0 = coeffs[0] + coeffs[1] * x0 + coeffs[2] * CppAD::pow(x0, 2) + coeffs[3] * CppAD::pow(x0, 3);
       AD<double> psides0 = CppAD::atan(coeffs[1] + 2*coeffs[2]*x0 + 3*coeffs[3]*CppAD::pow(x0, 2));  // Desired psi
 
-      // (v_0/MPC::Lf) * tan(delta_0)
-      // psi-rate or in other words( yaw-rate )
-      //AD<double> psid0 = (v0 / MPC::Lf) * CppAD::tan(delta0);
-
 
       // Here's `x` to get you started.
       // The idea here is to constraint this value to be 0.
@@ -159,14 +158,10 @@ class FG_eval {
       if (t == 0) {dyndt = lh + dt;}
       else {dyndt = dt; }
 
-      //const double ds = 1000;
-      //const double f_steer = ds / pow(v, 2);
-      //const double psid_1 = (1-f_steer)*psid_0 + f_steer*(v_0/MPC::Lf)*tan(delta_0);
-
       AD<double> f_steer = MPC::ds / (MPC::ds/MPC::ds_min + CppAD::pow(v0, 2));
       fg[2 + psid_start   + t] = psid1  - ((1 - f_steer) * psid0 + f_steer * (v0 / MPC::Lf) * CppAD::tan(delta0));
 
-      if (psid0 > 0.0001) {
+      if (psid0 > 0.001) {
         // CTRV model
         fg[2 + x_start   + t] = x1   - (x0 + v0/psid0 * ( CppAD::sin(psi0 + psid0 * dyndt) - CppAD::sin(psi0)));
         fg[2 + y_start   + t] = y1   - (y0 + v0/psid0 * (-CppAD::cos(psi0 + psid0 * dyndt) + CppAD::cos(psi0)));
