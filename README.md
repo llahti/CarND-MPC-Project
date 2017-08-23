@@ -2,41 +2,174 @@
 Self-Driving Car Engineer Nanodegree Program
 
 ## Introduction
-
-In this project I’ll implement Model Predictive Control to drive a vehicle around the race track in simulator. Project has challenge as there is 100ms delay to send commands to simulator so there need to be a  way to handle latency in order to car drive safely on road.
+In this project I’ll implement Model Predictive Control to drive a
+vehicle around the race track in simulator. Project has challenge
+as there is 100ms delay to send commands to simulator so there need
+to be a  way to handle latency in order to drive car safely on road.
 
 ## Vehicle State
 
-Vehicle state is presented by a simple kinematics which models vehicle position, orientation and speed. It is  presented by following  vehicle state vector.
+Vehicle state is presented by a simple kinematics which models
+vehicle position, orientation and speed. It is  presented by
+following vehicle state vector.
+
+
+
+
+
 
 ![Vehicle State](./illustrations/vehicle_state.jpg)
 
-Where
+_Where_
 x = horizontal position 
 y = vertical position 
 ψ= orientation (psi, yaw, heading)
 v = speed (absolute velocity)
 
-Control inputs can be presented by steering angle and combined value for throttle and brake. Positive throttle values are accelerating vehicle and negative values are decelerating vehicle.
+Control inputs can be presented by steering angle and combined
+value for throttle and brake. Positive throttle values are accelerating
+vehicle and negative values are decelerating vehicle.
 
 ![Vehicle Controls](./illustrations/vehicle_controls.jpg)
 
-where
-
+_Where_
 δ = steering angle
 a = acceleration
 
 
-## Kinematic Model
-Simple way to model vehicle is to use so called bicycle model. When vehicle’s yaw-rate is close to zero vehicle’s position in future can be calculated by following equations
+By combining state and controls we’ll get full state vector
+which presents vehicle’s state in the optimizer.
 
-![Bicycle Model](./illustrations/bicycle_model.jpg)
+![Full Vehicle State Vector](./illustrations/vehicle_state_vector.png)
 
-Where
+## Bicycle Kinematic Model
+
+In this project I’m using bit simplified version bicycle model
+which is quite enough for  car speed below  50mph in simulator.
+If purpose is to go faster with this simplified model then you can
+play with latency and look-ahead time which are used compensate lag.
+I’m using two different models to predict car’s position in future.
+Linear and CTRV model. Linear model is assuming that vehicle is
+travelling  straight line and CTRV model takes into account vehicle’s yaw rate.
+
+![Linear and CTRV model](./illustrations/linear_ctrv_models.png)
+
+When vehicle’s yaw-rate is close to zero then vehicle’s position
+in future can be calculated by using linear model. See following equations.
+
+![Linear model equations](./illustrations/linear_model_eq.png)
+
+_Where_
 t+1 = future state
 Lf = distance from front axle to center of gravity
 
----
+If vehicle’s yaw-rate is high then linear model can’t predict
+car’s state accurately and we should use CTRV model. Problem
+here is that in order to use CTRV model efficiently we need
+to know vehicle’s yaw-rate. Again problem.. Yaw-rate is not
+presented  by the model, but we can use steering angle to
+roughly estimate yaw-rate. Estimations are mostly good enough
+on low speeds.
+
+![CTRV model equations](./illustrations/ctrv_model_eq.png)
+
+## Improvements
+
+By adding yaw-rate into model we can achieve more accurate
+results because then we also got information about the actual
+yaw-rate and we are not limited by estimating it from steering
+angle. After implementing yaw-rate into model our state vector
+looks like this:
+
+![State Vector With Yaw-rate](./illustrations/state_vector_with_yaw_rate.png)
+
+Problem here is that simulator doesn’t return yaw-rate.
+Fortunately it’s possible to calculate yaw-rate from the
+measurements and correct it with prediction calculated
+from steering angle.  For simplicity we assume that
+acceleration is 0.
+
+![CTRV model with yaw-rate](./illustrations/ctrv_model_with_yawrate_eq.png)
+
+### Yaw-rate
+
+Special attention should be paid to yaw-rate prediction as it plays important role
+when car is going fast. Below equation is very rough estimation how yaw-rate should
+be behaving with function of speed. Purpose is to change ratio of measured yaw-rate
+and calculation based on steering angle. Measured yaw-rate is weighted more on high
+speeds because of mass moment car should react less to steering angle changes on high speeds.
+In the below equation ds is a coefficient which is used to adjust how much steering angle
+based predictions are weighted. Higher number gives higher weight on steering angle based prediction.
+
+![Yaw-rate Prediction](./illustrations/yaw_rate_eq.png)
+
+# Implementation
+
+## Simulator data preprocessing
+
+Speed is converted from mph to metric units (m/s).
+```c++
+const double v_0 = 0.44704 *(double)j[1]["speed"];
+```
+
+Steering angle is inverted to convert it from simulator space to something what
+mathematical functions expect.
+```
+const double delta_0 = -(double)j[1]["steering_angle"];
+```
+
+Delta_t is calculated from the time difference between current and previous measurement.
+time difference is needed to calculate true acceleration and yaw-rate.
+```
+std::chrono::time_point<std::chrono::high_resolution_clock> timestamp_now;
+timestamp_now = std::chrono::high_resolution_clock::now();
+std::chrono::duration<double> time_diff = timestamp_now - timestamp_previous;
+double delta_t = time_diff.count();
+timestamp_previous = timestamp_now;
+```
+
+Yaw-rate calculation needs bit more than pure subtraction due to jump from
+2*PI to 0 in angle.
+```
+meas_delta(2) = atan2(sin(meas_this(2) - meas_previous(2)), cos(meas_this(2) - meas_previous(2)));
+const double psid_0 = meas_delta(2) / delta_t;
+```
+
+At last acceleration is calculated from the velocity difference.
+```
+const double a_0 = meas_delta(3) / delta_t;
+```
+
+## Latency Considerations
+
+In code i have defined two different type of methods to cancel out the latency.
+1. Static Latency: Static value which can be used for finetuning
+2. Average Loop latency: Real time latency value. It is time difference of start and end of `h.onMessage()`
+
+Value of both are summed together and later on used for latency cancellation .
+
+```
+const double static_latency = 0.0;
+const double latency = timer.getAverage() + static_latency;
+```
+
+The actual way of cancelling out the effect of latency is based on the idea that
+first we'll predict car's state after the latency and then feed this new state to solver.
+By this way we'are able to make math simpler, because we can assume in solver car x, y and psi
+as zero.
+
+Yaw-rate calculation after latency is bit special. Anyhow it is based on the
+equations given earlier in this document, but i had to use correction factor 0.55
+in psid_1 calculation to make car behavior stable in high speeds.
+Correction factors  0.5 +- 0.1 should work reasonably well.
+
+```
+const double f_steer = MPC::ds / (MPC::ds/MPC::ds_min + pow(v_0, 2));
+const double psid_1_pred_delta = (v_0/MPC::Lf)*tan(delta_0);
+const double psid_1 = (1-f_steer)*psid_0*0.55 + f_steer*psid_1_pred_delta;
+```
+
+# Installation
 
 ## Dependencies
 
