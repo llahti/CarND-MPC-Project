@@ -23,7 +23,12 @@ double dyndt;  // dynamic dt to account look-ahead
 // The reference velocity is set to 40 mph.
 double ref_cte = 0;
 double ref_epsi = 0;
-double ref_v = 40;
+
+// 40 should work quite stable, 50 will work in good conditions
+// Don't use overly big speed because it will affect cost calculations
+// may render costs from other courses useless and cause unstable path.
+// Anyhow.. car's max. speed in simulator is around 115mph which is  (x m/s)?
+double ref_v = 40;  // unit is m/s (meters per second)
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish

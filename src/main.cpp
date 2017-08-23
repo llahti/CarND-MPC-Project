@@ -156,30 +156,31 @@ int main() {
 
           // Calculate psid and acceleration by using previous measurements
           // Vector px, py, psi, v, delta, a
-          // TODO: timestamping and exact calculations of acceleration, etc
           Eigen::VectorXd meas_this(6);
           meas_this << px_0, py_0, psi_0, v_0, delta_0, 0.0;
           Eigen::VectorXd meas_delta = meas_this - meas_previous;
-          // angle needs special attention because of the jump from 2 * PI to 0
+          // angle differene needs special attention because of the jump from 2 * PI to 0
           meas_delta(2) = atan2(sin(meas_this(2) - meas_previous(2)), cos(meas_this(2) - meas_previous(2)));
-          const double psid_0 = meas_delta(2) / delta_t;  // divide by 2, makes driving more stable
-          const double a_0 = meas_delta(3) / delta_t;
+          const double psid_0 = meas_delta(2) / delta_t;  // yaw-rate
+          const double a_0 = meas_delta(3) / delta_t;  // acceleration
           meas_previous = meas_this;
 
 
-          // Use static_latency to finetune latency. Especially in high speeds it's helpful
+          // Use static_latency to finetune latency.
           const double static_latency = 0.0;
+          // Total latency to be used to cancel out latency effects.
           const double latency = timer.getAverage() + static_latency;
 
           //
           // Predict car position after latency time
           //
-          // yaw-rate, need to compensate because car won't react to steering angle changes ideally.
+          // yaw-rate, need to be compensate because car won't react to steering angle changes ideally.
+          // f_steer is a ratio of measured yaw-rate(psid_0) and prediction from steering angle.
           const double f_steer = MPC::ds / (MPC::ds/MPC::ds_min + pow(v_0, 2));
           const double psid_1_pred_delta = (v_0/MPC::Lf)*tan(delta_0);
-          const double psid_1 = (1-f_steer)*psid_0*0.55 + f_steer*psid_1_pred_delta;
-          const double psi_1 = psi_0 + psid_1 * latency;
-          const double v_1 = v_0 + a_0 * latency;
+          const double psid_1 = (1-f_steer)*psid_0*0.55 + f_steer*psid_1_pred_delta;  // yaw-rate
+          const double psi_1 = psi_0 + psid_1 * latency;  // Yaw-angle
+          const double v_1 = v_0 + a_0 * latency;  // Speed
           // Depending of psid(yaw-rate) select straight line euqation or circle equation
           double px_1 = px_0;
           double py_1 = py_0;
@@ -211,7 +212,6 @@ int main() {
           auto coeffs_1 = polyfit(ptsx_transform_1, ptsy_transform_1, 3);
           double cte_1 = polyeval(coeffs_1, 0);
           double epsi_1 = -atan(coeffs_1[1]);
-
 
 
           // State vector for MPC
