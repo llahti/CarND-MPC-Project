@@ -6,12 +6,11 @@
 using CppAD::AD;
 
 // Set the timestep length and duration.
-// Timestep length is 67ms and number of timesteps is 17
-// This makes our prediction horizon 1.14s long
-//size_t N = 17;
-//const double dt = 0.067;
+// Timestep length is 100ms and number of timesteps is 12
+// This makes our prediction horizon 1.2s long
 size_t N = 12;
 const double dt = 0.1;
+
 // Look-ahead time is for predicting first point later in future
 // and that way making predictions to take more into account vehicle dynamics.
 // I.E. you need to turn wheels just before the turn in order not to be late
@@ -23,7 +22,12 @@ double dyndt;  // dynamic dt to account look-ahead
 // The reference velocity is set to 40 mph.
 double ref_cte = 0;
 double ref_epsi = 0;
-double ref_v = 40;
+
+// 40 should work quite stable, 50 will work in good conditions
+// Don't use overly big speed because it will affect cost calculations
+// may render costs from other courses useless and cause unstable path.
+// Anyhow.. car's max. speed in simulator is around 115mph which is  (x m/s)?
+double ref_v = 40;  // unit is m/s (meters per second)
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
