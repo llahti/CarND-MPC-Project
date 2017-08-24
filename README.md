@@ -9,10 +9,15 @@ to be a  way to handle latency in order to drive car safely on road.
 
 ### Videos
 
-I have recorded couple of videos of achieved performance. See below.
+I have recorded couple of videos of achieved performance. Usually
+controller is able to drive car around the track almost on full speed
+with good stability, but on some situations car will get out of control
+drive out of track. Lower speeds under 90mph are considered very stable.
 
-[MPC: 92mph with 100ms latency](https://youtu.be/PZYRxiZgAkc)
-
+* [MPC: 92mph with 100ms latency](https://youtu.be/PZYRxiZgAkc)
+* [MPC: 102mph with 100ms latency](https://youtu.be/5RNDMe3sLbk)
+* [MPC: 110mph with 100ms latency](https://youtu.be/6QXXEj-KyWo)
+* [MPC: 110mph wno latency](https://youtu.be/XWf9jWTwk-M)
 
 ## Vehicle State
 
@@ -78,10 +83,11 @@ on low speeds.
 
 ## Improvements
 
-By adding yaw-rate into model we can achieve more accurate
-results because then we also got information about the actual
-yaw-rate and we are not limited by estimating it from steering
-angle. After implementing yaw-rate into model our state vector
+By adding yaw-rate into model and considering vehicle steering dynamics
+we can achieve more accurate results because then we can predict
+more accurately car's position in future. Yaw-rate helps by providing
+information about the actual yaw-rate so we are not limited to estimates
+from steering angle. After implementing yaw-rate into model our state vector
 looks like this:
 
 ![State Vector With Yaw-rate](./illustrations/state_vector_with_yaw_rate.png)
@@ -98,8 +104,9 @@ acceleration is 0.
 
 Special attention should be paid to yaw-rate prediction as it plays important role
 when car is going fast. Below equation is very rough estimation how yaw-rate should
-be behaving with function of speed. Purpose is to change ratio of measured yaw-rate
-and calculation based on steering angle. Measured yaw-rate is weighted more on high
+be behaving with function of speed. Purpose is to model vehicle steering dynamics
+by changing ratio of measured yaw-rate and calculation based on steering angle.
+Measured yaw-rate is weighted more on high
 speeds because of mass moment car should react less to steering angle changes on high speeds.
 In the below equation ds is a coefficient which is used to adjust how much steering angle
 based predictions are weighted. Higher number gives higher weight on steering angle based prediction.
