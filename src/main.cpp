@@ -117,8 +117,11 @@ int main() {
   // MPC is initialized here!
   MPC mpc;
   Eigen::VectorXd meas_previous = Eigen::VectorXd::Zero(6);
+  std::chrono::time_point<std::chrono::high_resolution_clock> timestamp_previous;
+  timestamp_previous = std::chrono::high_resolution_clock::now();
 
-  h.onMessage([&mpc, &timer, &meas_previous](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+
+  h.onMessage([&mpc, &timer, &meas_previous, &timestamp_previous](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     timer.Start();
     // "42" at the start of the message means there's a websocket message event.
@@ -139,36 +142,45 @@ int main() {
           const double psi_0 = j[1]["psi"];
           const double v_0 = 0.44704 *(double)j[1]["speed"]; // convert mph to meters/second
           const double delta_0 = -(double)j[1]["steering_angle"];  // Invert steering angle (delta)
-          double a_0 = j[1]["throttle"];
+          const double throttle_0 = j[1]["throttle"];
           // Get xy way points from simulator
           vector<double> ptsx = j[1]["ptsx"];
           vector<double> ptsy = j[1]["ptsy"];
 
+          // Calculate delta_t between this and previous measurement
+          std::chrono::time_point<std::chrono::high_resolution_clock> timestamp_now;
+          timestamp_now = std::chrono::high_resolution_clock::now();
+          std::chrono::duration<double> time_diff = timestamp_now - timestamp_previous;
+          double delta_t = time_diff.count();
+          timestamp_previous = timestamp_now;
+
           // Calculate psid and acceleration by using previous measurements
           // Vector px, py, psi, v, delta, a
           Eigen::VectorXd meas_this(6);
-          meas_this << px_0, py_0, psi_0, v_0, delta_0, a_0;
+          meas_this << px_0, py_0, psi_0, v_0, delta_0, 0.0;
           Eigen::VectorXd meas_delta = meas_this - meas_previous;
-          // angle needs special attention because of the jump from 2 * PI to 0
+          // angle differene needs special attention because of the jump from 2 * PI to 0
           meas_delta(2) = atan2(sin(meas_this(2) - meas_previous(2)), cos(meas_this(2) - meas_previous(2)));
-          const double psid_0 = meas_delta(2);
-          a_0 = meas_delta(3);
+          const double psid_0 = meas_delta(2) / delta_t;  // yaw-rate
+          const double a_0 = meas_delta(3) / delta_t;  // acceleration
           meas_previous = meas_this;
 
 
-          // Use static_latency to finetune latency. Especially in high speeds it's helpful
-          const double static_latency = 0.2;
+          // Use static_latency to finetune latency.
+          const double static_latency = 0.0;
+          // Total latency to be used to cancel out latency effects.
           const double latency = timer.getAverage() + static_latency;
 
           //
           // Predict car position after latency time
           //
-          // yaw-rate, need to compensate because car won't react to steering angle changes ideally.
-          const double psid_1 = (0.3 * (v_0/MPC::Lf) * tan(delta_0)) + (0.7 * psid_0);
-          //const double psid_1 = psid_0;
-          std::cout << "psid_0=" << psid_0 << std::endl;
-          const double psi_1 = psi_0 + psid_1 * latency;
-          const double v_1 = v_0 + a_0 * latency;
+          // yaw-rate, need to be compensate because car won't react to steering angle changes ideally.
+          // f_steer is a ratio of measured yaw-rate(psid_0) and prediction from steering angle.
+          const double f_steer = MPC::ds / (MPC::ds/MPC::ds_min + pow(v_0, 2));
+          const double psid_1_pred_delta = (v_0/MPC::Lf)*tan(delta_0);
+          const double psid_1 = (1-f_steer)*psid_0 * 0.5 + f_steer*psid_1_pred_delta;  // yaw-rate
+          const double psi_1 = psi_0 + psid_1 * latency;  // Yaw-angle
+          const double v_1 = v_0 + a_0 * latency;  // Speed
           // Depending of psid(yaw-rate) select straight line euqation or circle equation
           double px_1 = px_0;
           double py_1 = py_0;
@@ -204,8 +216,8 @@ int main() {
 
           // State vector for MPC
           // px, py and psi are 0 because latency is already compensated in coeffs_1
-          Eigen::VectorXd state(6);
-          state << 0, 0, 0, v_1, cte_1, epsi_1;
+          Eigen::VectorXd state(MPC::n_x_);
+          state << 0, 0, 0, psid_1, v_1, cte_1, epsi_1;
 
           // Solve steering angle, throttle and predicted trajectory
           auto vars = mpc.Solve(state, coeffs_1);
@@ -239,8 +251,9 @@ int main() {
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
-          //msgJson["steering_angle"] = -vars[0]/(deg2rad(25)*MPC::Lf);
-          msgJson["steering_angle"] = -vars[0]/(deg2rad(25)*MPC::Lf);
+          // 0.8 is damping factor. It is useful in high speeds to reduce oscillations.
+          const double delta_1 = -vars[0]/(deg2rad(25)*MPC::Lf) * 0.8;
+          msgJson["steering_angle"] = delta_1;
           msgJson["throttle"] = vars[1];
 
 
@@ -271,8 +284,22 @@ int main() {
           // SUBMITTING.
           this_thread::sleep_for(chrono::milliseconds(100));
           double lat = timer.Stop();
-          std::cout << "Latency: loop=" << lat << " Avg=" << timer.getAverage() << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+
+          // DEBUG OUTPUT
+          std::cout << "delta_t=" << delta_t << " loop_latency=" << lat << std::endl;
+          std::cout << "\tpx_0=" << px_0 << " py_0=" << py_0
+                    << " psi_0=" << psi_0 << " psid_0=" << psid_0
+                    << " v_0=" << v_0
+                    << " delta_0=" << delta_0 << " throttle_0=" << throttle_0
+                    << std::endl;
+          std::cout << "\tpx_1=" << px_1 << " py_1=" << py_1
+                    << " psi_1=" << psi_1 << " psid_1=" << psid_1
+                    << " v_1=" << v_1 << " delta_1=" << delta_1
+                    << " cte_1=" << cte_1 << " epsi_1=" << epsi_1
+                    << " f_steer=" << f_steer
+                    << " psid_1_pred_delta=" << psid_1_pred_delta
+                    << std::endl;
         }
       } else {
         // Manual driving
