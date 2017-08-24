@@ -7,15 +7,18 @@ vehicle around the race track in simulator. Project has challenge
 as there is 100ms delay to send commands to simulator so there need
 to be a  way to handle latency in order to drive car safely on road.
 
+### Videos
+
+I have recorded couple of videos of achieved performance. See below.
+
+[MPC: 92mph with 100ms latency](https://youtu.be/PZYRxiZgAkc)
+
+
 ## Vehicle State
 
 Vehicle state is presented by a simple kinematics which models
 vehicle position, orientation and speed. It is  presented by
 following vehicle state vector.
-
-
-
-
 
 
 ![Vehicle State](./illustrations/vehicle_state.jpg)
@@ -114,13 +117,13 @@ const double v_0 = 0.44704 *(double)j[1]["speed"];
 
 Steering angle is inverted to convert it from simulator space to something what
 mathematical functions expect.
-```
+```c++
 const double delta_0 = -(double)j[1]["steering_angle"];
 ```
 
 Delta_t is calculated from the time difference between current and previous measurement.
 time difference is needed to calculate true acceleration and yaw-rate.
-```
+```c++
 std::chrono::time_point<std::chrono::high_resolution_clock> timestamp_now;
 timestamp_now = std::chrono::high_resolution_clock::now();
 std::chrono::duration<double> time_diff = timestamp_now - timestamp_previous;
@@ -130,25 +133,25 @@ timestamp_previous = timestamp_now;
 
 Yaw-rate calculation needs bit more than pure subtraction due to jump from
 2*PI to 0 in angle.
-```
+```c++
 meas_delta(2) = atan2(sin(meas_this(2) - meas_previous(2)), cos(meas_this(2) - meas_previous(2)));
 const double psid_0 = meas_delta(2) / delta_t;
 ```
 
 At last acceleration is calculated from the velocity difference.
-```
+```c++
 const double a_0 = meas_delta(3) / delta_t;
 ```
 
 ## Latency Considerations
 
-In code i have defined two different type of methods to cancel out the latency.
-1. Static Latency: Static value which can be used for finetuning
+In code i have defined two different way to cancel out the latency.
+1. Static Latency: Static value which can be used for fine tuning
 2. Average Loop latency: Real time latency value. It is time difference of start and end of `h.onMessage()`
 
 Value of both are summed together and later on used for latency cancellation .
 
-```
+```c++
 const double static_latency = 0.0;
 const double latency = timer.getAverage() + static_latency;
 ```
@@ -163,11 +166,24 @@ equations given earlier in this document, but i had to use correction factor 0.5
 in psid_1 calculation to make car behavior stable in high speeds.
 Correction factors  0.5 +- 0.1 should work reasonably well.
 
-```
+```c++
 const double f_steer = MPC::ds / (MPC::ds/MPC::ds_min + pow(v_0, 2));
 const double psid_1_pred_delta = (v_0/MPC::Lf)*tan(delta_0);
 const double psid_1 = (1-f_steer)*psid_0*0.55 + f_steer*psid_1_pred_delta;
 ```
+
+## Stablizing car
+
+Car have been stabilized by tuning cost functions (mpc.cpp lines 73...101) and also
+by two adhoc coefficients to dampen turn rate. First was already mentioned in above latency section
+and the second one is reducing steering angle right before it is send to simulator.
+
+```c++
+const double delta_1 = -vars[0]/(deg2rad(25)*MPC::Lf) * 0.8;
+msgJson["steering_angle"] = delta_1;
+```
+
+
 
 # Installation
 

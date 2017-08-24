@@ -178,7 +178,7 @@ int main() {
           // f_steer is a ratio of measured yaw-rate(psid_0) and prediction from steering angle.
           const double f_steer = MPC::ds / (MPC::ds/MPC::ds_min + pow(v_0, 2));
           const double psid_1_pred_delta = (v_0/MPC::Lf)*tan(delta_0);
-          const double psid_1 = (1-f_steer)*psid_0*0.55 + f_steer*psid_1_pred_delta;  // yaw-rate
+          const double psid_1 = (1-f_steer)*psid_0 * 0.5 + f_steer*psid_1_pred_delta;  // yaw-rate
           const double psi_1 = psi_0 + psid_1 * latency;  // Yaw-angle
           const double v_1 = v_0 + a_0 * latency;  // Speed
           // Depending of psid(yaw-rate) select straight line euqation or circle equation
@@ -251,8 +251,8 @@ int main() {
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
-          // 0.75 is damping factor. It is very useful in high speeds to reduce oscillations.
-          const double delta_1 = -vars[0]/(deg2rad(25)*MPC::Lf) * 0.70;
+          // 0.8 is damping factor. It is useful in high speeds to reduce oscillations.
+          const double delta_1 = -vars[0]/(deg2rad(25)*MPC::Lf) * 0.8;
           msgJson["steering_angle"] = delta_1;
           msgJson["throttle"] = vars[1];
 

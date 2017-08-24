@@ -8,13 +8,13 @@ using CppAD::AD;
 // Set the timestep length and duration.
 // Timestep length is 100ms and number of timesteps is 12
 // This makes our prediction horizon 1.2s long
-size_t N = 12;
-const double dt = 0.1;
+size_t N = 8;
+const double dt = 0.120;
 
 // Look-ahead time is for predicting first point later in future
 // and that way making predictions to take more into account vehicle dynamics.
 // I.E. you need to turn wheels just before the turn in order not to be late
-const double lh = 0.0; // Look-ahead time
+const double lh = 0.00; // Look-ahead time
 double dyndt;  // dynamic dt to account look-ahead
 
 
@@ -23,11 +23,11 @@ double dyndt;  // dynamic dt to account look-ahead
 double ref_cte = 0;
 double ref_epsi = 0;
 
-// 40 should work quite stable, 50 will work in good conditions
-// Don't use overly big speed because it will affect cost calculations
+// 40m/s should work quite well
+// Don't use overly high speed because it will affect cost calculations
 // may render costs from other courses useless and cause unstable path.
 // Anyhow.. car's max. speed in simulator is around 115mph which is  (x m/s)?
-double ref_v = 40;  // unit is m/s (meters per second)
+double ref_v = 45;  // unit is m/s (meters per second)
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -72,17 +72,17 @@ class FG_eval {
     // TODO: Describe more in details
     for (uint t = 0; t < N-1; t++) {
       // Penalize cte and give higher value to future cte
-      fg[0] += 20*CppAD::pow(vars[cte_start + t] - ref_cte, 4);  // Try 2000 as multiplier
-      fg[0] += 70*(t+1)*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      fg[0] += 50*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
+      fg[0] += 20*(t+1)*CppAD::pow(vars[cte_start + t] - ref_cte, 2);  // Try 2000 as multiplier
       // Penalize epsi and give higher value to instantanous values
-      fg[0] += 100*     CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
+      fg[0] += 50*     CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
       fg[0] += 50*1/(t+1)*CppAD::pow(vars[epsi_start + t] - ref_epsi, 2);  // Try 2000 as multiplier
       // deviation from reference speed need to be penalized, because otherwise car wouldn't move
       // Keep penalty for not meeting reference speed small because otherwise it'll
       // mask cost of more important parameters such like cte or epsi.
-      fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
+      fg[0] += 2*CppAD::pow(vars[v_start + t] - ref_v, 2);
       // Penalize high speed with high steering angle
-      //fg[0] += CppAD::pow(vars[v_start + t] * vars[delta_start + t], 2);
+      fg[0] += 0.5*CppAD::pow(vars[v_start + t] * vars[delta_start + t], 2);
     }
 
 
@@ -91,14 +91,12 @@ class FG_eval {
     for (uint t = 0; t < N - 1; t++) {
       fg[0] += 5*CppAD::pow(vars[delta_start + t], 2);  // try 5 as a multiplier
       fg[0] += 5*CppAD::pow(vars[a_start + t], 2);  // try 5 as a multiplier
-      // Limit steering usage more on high speeds
-      fg[0] += 5*CppAD::pow(vars[delta_start + t] * vars[v_start + t], 2);
     }
 
     // Minimize the value gap between sequential actuations.
     // TODO: Describe more in details
     for (uint t = 0; t < N - 2; t++) {
-      fg[0] += 500*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);  // Try 200
+      fg[0] += 200*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);  // Try 200
       fg[0] += 10*CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);  // try 10
     }
 
@@ -119,6 +117,7 @@ class FG_eval {
     fg[1 + v_start] = vars[v_start];
     fg[1 + cte_start] = vars[cte_start];
     fg[1 + epsi_start] = vars[epsi_start];
+
 
     // The rest of the constraints
     for (uint t = 0; t < N-1; t++) {
@@ -180,11 +179,10 @@ class FG_eval {
       fg[2 + psi_start + t] = psi1 - (psi0 + psid0 * dyndt);
       fg[2 + v_start   + t] = v1   - (v0 + a0 * dyndt);
       fg[2 + cte_start + t] =
-          cte1 - ((f0 - y0) + (v0 * CppAD::sin(epsi0) * dyndt));
+          cte1 - ((f0 - y0) - (v0 * CppAD::sin(epsi0) * dyndt));
       // TODO: Check the correct equation for epsi1
       fg[2 + epsi_start + t] =
-          epsi1 - ((psi0 - psides0) + psid0 * dyndt);
-          //epsi1 - ((psi0 - psides0) - v0 * delta0 / MPC::Lf * dt);
+          epsi1 - ((psi0 - psides0) - psid0 * dyndt);
     }
   }
 };

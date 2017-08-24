@@ -31,7 +31,7 @@ class MPC {
 
   // Coefficient to define how much steering is affected by yaw-rate
   // and how much by steering angle
-  static constexpr double ds = 400;
+  static constexpr double ds = 800;
   // defines maximum portion from steering angle based prediction
   // This is needed when speed is close to zero.
   static constexpr double ds_min = 0.7;
