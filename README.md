@@ -190,6 +190,20 @@ const double delta_1 = -vars[0]/(deg2rad(25)*MPC::Lf) * 0.8;
 msgJson["steering_angle"] = delta_1;
 ```
 
+## Solver: Number of timesteps and timestep length
+
+Number of timesteps(N) affects computation time and too large N is slowing down update rate. In my code i tried values 8...20 and generally values over 15 didn't gave any benefits and values below 8 seems to be bit too sparse. 
+Selecting timestep length(dt) is related to N because prediction horizon should be between 1s..1.5s. This is based on experimental results what i noticed during the project. It also make sense because there are no any benefits to predict car's path several seconds ahead because it is either computationally expensive or gives inaccurate results depending on the N and dt.
+
+I'm thinking path optimization this way that we should give relatively less value to instataneous state and give more value to state in future. This causes controller to focus more in future state and guiding car towards right path. Also it have potential to reduce oscillations. You may think it this way that if car is just a bit out of path right now it doesn't matter much, but if car is going to be out of path in future it matters a lot.
+
+In my project submission i used following values. These are working quite well even at the high speeds
+```c++
+size_t N = 8;
+const double dt = 0.120;
+```
+
+One additional consideration is latency which i measured to be around 120ms +-10ms on my computer. And the hypothesis i would like to throw: Is it beneficial to select dt to be about same than the total latency? And would it model the car behavior better in simulator because then it would kind of consider the update rate in simulator.
 
 
 # Installation
